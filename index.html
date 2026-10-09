@@ -751,11 +751,44 @@ const Store = {
   },
 };
 
+/* ---------- reparto, categoria e taglie ---------- */
+const DEPTS = { Mens: 'Uomo', Womens: 'Donna', Junior: 'Junior', Childrens: 'Bambino', Infant: 'Infant', Replica: 'Replica' };
+const CATS = { Footwear: 'Calzature', Textiles: 'Abbigliamento' };
+const LETTER = { "XXS": 'XXS', "XXSW)": 'XXS', "X'SML": 'XS', "XS": 'XS', "SML": 'S', "S": 'S', "MED": 'M', "M": 'M', "LGE": 'L', "L": 'L', "X'LGE": 'XL', "XLGE": 'XL', "XL": 'XL', "XX'LGE": 'XXL', "XXL": 'XXL' };
+const LETTER_ORDER = ['XXS', 'XS', 'S', 'M', 'L', 'XL', 'XXL'];
+function normSize(raw, foot) {
+  let x = String(raw).trim().replace(/"$/, '');
+  if (foot && /^\d{3}$/.test(x) && +x % 5 === 0 && +x >= 150 && +x <= 500) return String(+x / 10);
+  const slash = /^\d+\/(.+)$/.exec(x); if (slash && LETTER[slash[1]]) return LETTER[slash[1]];
+  const w = /^(.+)\(W\)$/.exec(x); if (w && LETTER[w[1]]) return LETTER[w[1]];
+  if (LETTER[x]) return LETTER[x];
+  const jr = /^(\d{2})R$/.exec(x); if (jr) return jr[1];
+  return x;
+}
+function sizeKey(z) {
+  const li = LETTER_ORDER.indexOf(z); if (li >= 0) return [1, li];
+  const fr = /^(\d+(?:\.\d+)?)(?:\s+(\d)\/(\d))?$/.exec(z); if (fr) return [0, +fr[1] + (fr[2] ? fr[2] / fr[3] : 0)];
+  const age = /^(\d+)(?:-(\d+))?(MTH|YRS)$/.exec(z); if (age) return [2, (age[3] === 'MTH' ? 0 : 100) + +age[1]];
+  const n = parseFloat(z); return isFinite(n) ? [3, n] : [4, 0];
+}
+const sizeCmp = (a, b) => { const x = sizeKey(a), y = sizeKey(b); return x[0] - y[0] || x[1] - y[1] || a.localeCompare(b); };
+function enrich(r) {
+  const m = /^(\w+)\s+(\w+)/.exec(r.gender || '');
+  if (/^Accessories/i.test(r.gender)) { r.dept = 'Accessori'; r.cat = 'Accessori'; }
+  else { r.dept = m ? DEPTS[m[1]] || m[1] : r.gender; r.cat = m ? CATS[m[2]] || m[2] : r.gender; }
+  const foot = /Footwear/i.test(r.gender);
+  r.sizes = !r.frag ? [] : r.frag.split(',').map((p) => p.trim()).filter(Boolean).map((p) => {
+    const mm = /^(.*?)\s*\((\d+)\)$/.exec(p);
+    return { z: normSize(mm ? mm[1] : p, foot), raw: mm ? mm[1] : p, n: mm ? +mm[2] : 1 };
+  });
+  return r;
+}
+
 /* ---------- stato ---------- */
 const S = {
   metas: [], branch: null, model: null, idx: -1, tab: 'dash',
   dashSel: { stock: 'up', sales: 'top', prices: 'promo', news: 'nuovi' },
-  art: { q: '', brand: '', gender: '', ptype: '', qmin: '', qmax: '', u7min: '', lastOld: '', onlyNew: false, sort: 'qty', limit: 60, showFilters: false },
+  art: { q: '', brand: '', dept: '', cat: '', size: '', ptype: '', qmin: '', qmax: '', u7min: '', lastOld: '', onlyNew: false, sort: 'qty', limit: 60, showFilters: false },
   ev: { from: null, to: null, types: null, q: '', limit: 200 },
   pending: null, confirmDel: null, busy: false,
 };
@@ -786,7 +819,7 @@ async function loadAll(keepIdx) {
   let done = 0;
   for (const m of mine) {
     const packed = await Store.loadRows(m);
-    snaps.push({ meta: m, rows: packed.map(E.unpack) });
+    snaps.push({ meta: m, rows: packed.map((a) => enrich(E.unpack(a))) });
     done++;
     const b = $('#bootBar'); if (b) { b.style.width = `${15 + 85 * done / mine.length}%`; $('#bootMsg').textContent = `Carico lo storico: ${done} di ${mine.length} report`; }
   }
@@ -983,8 +1016,6 @@ function artBody() {
   const rows = s.rows;
   const tokens = a.q.split(/[\s,+;]+/).map(norm).filter(Boolean);
   const multi = tokens.length > 1 && /[\s,+;]/.test(a.q.trim());
-  const brands = [...new Set(rows.map((r) => r.brand))].sort();
-  const genders = [...new Set(rows.map((r) => r.gender))].sort();
   let h = '';
   if (multi) {
     const found = []; const missing = [];
@@ -998,10 +1029,19 @@ function artBody() {
     if (found.length) h += compareTable(found);
     return h;
   }
+  // ogni elenco a tendina mostra solo le voci compatibili con gli altri filtri principali
+  const pass = (r, skip) => (
+    (tokens.length !== 1 || norm(r.style).includes(tokens[0]) || norm(r.desc).includes(tokens[0]) || norm(r.barcode).includes(tokens[0])) &&
+    (skip === 'dept' || !a.dept || r.dept === a.dept) && (skip === 'cat' || !a.cat || r.cat === a.cat) &&
+    (skip === 'brand' || !a.brand || r.brand === a.brand) && (skip === 'size' || !a.size || r.sizes.some((z) => z.z === a.size)));
+  const countBy = (skip, keyFn) => { const m = new Map(); rows.forEach((r) => { if (pass(r, skip)) for (const k of keyFn(r)) m.set(k, (m.get(k) || 0) + 1); }); return m; };
+  const deptC = countBy('dept', (r) => [r.dept]);
+  const catC = countBy('cat', (r) => [r.cat]);
+  const brandC = countBy('brand', (r) => [r.brand]);
+  const sizeC = new Map(); rows.forEach((r) => { if (pass(r, 'size')) for (const z of r.sizes) sizeC.set(z.z, (sizeC.get(z.z) || 0) + z.n); });
+  const DEPT_ORDER = ['Uomo', 'Donna', 'Junior', 'Bambino', 'Infant', 'Replica', 'Accessori'];
   const f = rows.filter((r) => {
-    if (tokens.length === 1 && !(norm(r.style).includes(tokens[0]) || norm(r.desc).includes(tokens[0]) || norm(r.barcode).includes(tokens[0]))) return false;
-    if (a.brand && r.brand !== a.brand) return false;
-    if (a.gender && r.gender !== a.gender) return false;
+    if (!pass(r)) return false;
     if (a.ptype && r.ptype !== a.ptype) return false;
     if (a.qmin !== '' && r.qty < +a.qmin) return false;
     if (a.qmax !== '' && r.qty > +a.qmax) return false;
@@ -1018,16 +1058,25 @@ function artBody() {
     style: (x, y) => x.style.localeCompare(y.style),
   };
   f.sort(sorts[a.sort] || sorts.qty);
-  const active = ['brand', 'gender', 'ptype', 'qmin', 'qmax', 'u7min', 'lastOld'].filter((k) => a[k] !== '').length + (a.onlyNew ? 1 : 0);
+  const mainActive = ['dept', 'cat', 'brand', 'size'].filter((k) => a[k] !== '').length;
+  const active = ['ptype', 'qmin', 'qmax', 'u7min', 'lastOld'].filter((k) => a[k] !== '').length + (a.onlyNew ? 1 : 0);
   const o = (v, l, cur) => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${esc(l)}</option>`;
-  h += `<section class="card"><header><button class="btn ghost" data-togglefilters style="padding-inline:0;border:0">Filtri${active ? ` (${active})` : ''} ${a.showFilters ? '▴' : '▾'}</button>
+  const opts = (map, cur, order) => { const keys = [...map.keys()]; if (cur && !map.has(cur)) keys.push(cur); keys.sort(order || ((x, y) => x.localeCompare(y))); return keys.map((k) => o(k, `${k} (${fN(map.get(k) || 0)})`, cur)).join(''); };
+  const byDept = (x, y) => DEPT_ORDER.indexOf(x) - DEPT_ORDER.indexOf(y);
+  h += `<section class="card"><div class="filters" style="padding-top:12px">
+    <div class="row2"><div class="field"><label for="fDept">Reparto</label><select id="fDept">${o('', 'Tutti', a.dept)}${opts(deptC, a.dept, byDept)}</select></div>
+    <div class="field"><label for="fCat">Categoria</label><select id="fCat">${o('', 'Tutte', a.cat)}${opts(catC, a.cat)}</select></div></div>
+    <div class="row2"><div class="field"><label for="fBrand">Brand</label><select id="fBrand">${o('', 'Tutti', a.brand)}${opts(brandC, a.brand)}</select></div>
+    <div class="field"><label for="fSize">Taglia disponibile</label><select id="fSize">${o('', 'Tutte', a.size)}${opts(sizeC, a.size, sizeCmp)}</select></div></div>
+    ${a.size ? `<p class="note" style="padding:0">Il report indica le taglie solo per gli articoli con 3 pezzi o meno: qui vedi quelli che hanno ancora la taglia ${esc(a.size)}. Tra parentesi nell'elenco i pezzi disponibili.</p>` : ''}
+    ${mainActive ? '<button class="btn" data-clearmain>Azzera reparto, categoria, brand e taglia</button>' : ''}
+  </div>
+  <header style="padding-top:0"><button class="btn ghost" data-togglefilters style="padding-inline:0;border:0">Altri filtri${active ? ` (${active})` : ''} ${a.showFilters ? '▴' : '▾'}</button>
     <select id="artSort" aria-label="Ordina" style="background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-size:13px">
       ${o('qty', 'Stock ↓', a.sort)}${o('qtyAsc', 'Stock ↑', a.sort)}${o('u7', 'Vendite 7gg ↓', a.sort)}${o('last', 'Vendita più recente', a.sort)}${o('lastOld', 'Vendita più vecchia', a.sort)}${o('dPrev', 'Calo da ieri', a.sort)}${o('value', 'Valore stock ↓', a.sort)}${o('style', 'Style Code A-Z', a.sort)}
     </select></header>`;
   if (a.showFilters) {
     h += `<div class="filters">
-      <div class="row2"><div class="field"><label for="fBrand">Brand</label><select id="fBrand">${o('', 'Tutti', a.brand)}${brands.map((b) => o(b, b, a.brand)).join('')}</select></div>
-      <div class="field"><label for="fGender">Categoria</label><select id="fGender">${o('', 'Tutte', a.gender)}${genders.map((b) => o(b, b, a.gender)).join('')}</select></div></div>
       <div class="row2"><div class="field"><label for="fPtype">Price Type</label><select id="fPtype">${o('', 'Tutti', a.ptype)}${o('FULL', 'FULL', a.ptype)}${o('TK', 'TK · promo', a.ptype)}${o('NT', 'NT · variazione prezzo', a.ptype)}</select></div>
       <div class="field"><label for="fLast">Ultima vendita</label><select id="fLast">${o('', 'Qualsiasi', a.lastOld)}${o('30', 'Più di 30 giorni fa', a.lastOld)}${o('60', 'Più di 60 giorni fa', a.lastOld)}${o('90', 'Più di 90 giorni fa', a.lastOld)}${o('180', 'Più di 180 giorni fa', a.lastOld)}${o('none', 'Nessuna data nel report', a.lastOld)}</select></div></div>
       <div class="row2"><div class="field"><label for="fQmin">Stock da</label><input id="fQmin" inputmode="numeric" value="${esc(a.qmin)}" placeholder="0"></div>
@@ -1038,8 +1087,13 @@ function artBody() {
     </div>`;
   }
   const totQ = f.reduce((x, r) => x + r.qty, 0), totU = f.reduce((x, r) => x + r.u7, 0);
-  h += `<div class="toolbar" style="padding:0 12px 10px"><span>${fN(f.length)} righe · ${fN(totQ)} pz · ${fN(totU)} venduti 7gg</span></div><div class="list">`;
-  h += f.slice(0, a.limit).map((r) => rowItem(r, `<span class="big">${fN(r.qty)}</span><span class="small">${pt(r.ptype)} ${fE(r.sell)}</span>${r.calc.dPrev ? dp(r.calc.dPrev) : ''}`)).join('');
+  const totZ = a.size ? f.reduce((x, r) => x + r.sizes.filter((z) => z.z === a.size).reduce((y, z) => y + z.n, 0), 0) : null;
+  h += `<div class="toolbar" style="padding:0 12px 10px"><span>${fN(f.length)} righe · ${fN(totQ)} pz${totZ != null ? ` · ${fN(totZ)} in taglia ${esc(a.size)}` : ''} · ${fN(totU)} venduti 7gg</span></div><div class="list">`;
+  h += f.slice(0, a.limit).map((r) => {
+    const inSize = a.size ? r.sizes.filter((z) => z.z === a.size).reduce((x, z) => x + z.n, 0) : 0;
+    const sub = a.size ? `taglia ${esc(a.size)}: ${inSize} pz` : `${pt(r.ptype)} ${fE(r.sell)}`;
+    return rowItem(r, `<span class="big">${fN(r.qty)}</span><span class="small">${sub}</span>${r.calc.dPrev ? dp(r.calc.dPrev) : ''}`);
+  }).join('');
   if (!f.length) h += `<div class="empty">Nessun articolo trovato.</div>`;
   if (f.length > a.limit) h += `<button class="more" data-artmore><span>Mostra altri</span><span class="num">${fN(f.length - a.limit)}</span></button>`;
   return h + '</div></section>';
@@ -1354,7 +1408,8 @@ document.addEventListener('click', (ev) => {
   if (d.evmore !== undefined) { S.ev.limit += 200; return render(); }
   if (d.artmore !== undefined) { S.art.limit += 60; return render(); }
   if (d.togglefilters !== undefined) { S.art.showFilters = !S.art.showFilters; return render(); }
-  if (d.clearfilters !== undefined) { Object.assign(S.art, { brand: '', gender: '', ptype: '', qmin: '', qmax: '', u7min: '', lastOld: '', onlyNew: false }); return render(); }
+  if (d.clearfilters !== undefined) { Object.assign(S.art, { ptype: '', qmin: '', qmax: '', u7min: '', lastOld: '', onlyNew: false }); return render(); }
+  if (d.clearmain !== undefined) { Object.assign(S.art, { dept: '', cat: '', brand: '', size: '' }); return render(); }
 });
 
 let inputT = null;
@@ -1375,7 +1430,7 @@ document.addEventListener('change', (ev) => {
   if (id === 'evFrom') { S.ev.from = +v; return render(); }
   if (id === 'evTo') { S.ev.to = +v; if (S.ev.from >= S.ev.to) S.ev.from = S.ev.to - 1; return render(); }
   if (id === 'artSort') { S.art.sort = v; return render(); }
-  const selMap = { fBrand: 'brand', fGender: 'gender', fPtype: 'ptype', fLast: 'lastOld' };
+  const selMap = { fBrand: 'brand', fDept: 'dept', fCat: 'cat', fSize: 'size', fPtype: 'ptype', fLast: 'lastOld' };
   if (selMap[id]) { S.art[selMap[id]] = v; S.art.limit = 60; return render(); }
   if (id === 'fNew') { S.art.onlyNew = v === '1'; return render(); }
   const numMap = { fQmin: 'qmin', fQmax: 'qmax', fU7: 'u7min' };

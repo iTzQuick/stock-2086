@@ -1,5 +1,5 @@
 // Copia l'app nel telefono per farla funzionare anche offline.
-const VERSION = 'stock-v4';
+const VERSION = 'stock-v5';
 const FILES = [
   './', 'index.html', 'manifest.webmanifest', 'lib/pdf.min.js', 'lib/pdf.worker.min.js',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/maskable-512.png', 'icons/apple-touch-icon.png',
