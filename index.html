@@ -183,6 +183,11 @@ main { flex: 1 1 auto; overflow-y: auto; padding-inline: 16px; padding-block: 14
 .status { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); }
 .dot { width: 8px; height: 8px; border-radius: 4px; background: var(--muted); flex: 0 0 auto; }
 .dot.on { background: var(--up); } .dot.warn { background: var(--down); }
+.paste { border: 1.5px dashed var(--line); border-radius: var(--r); padding: 16px 12px; text-align: center; color: var(--muted); font-size: 16px; line-height: 1.35; background: var(--bg); caret-color: transparent; -webkit-user-select: text; user-select: text; outline: none; }
+.paste:focus, .paste.over { border-color: var(--ink); color: var(--ink); background: var(--surface); }
+.paste b { color: var(--ink); }
+.or { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+.or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 .toast { position: fixed; left: 16px; right: 16px; bottom: calc(80px + env(safe-area-inset-bottom, 0px)); z-index: 20; background: var(--ink); color: var(--bg); border-radius: var(--r); padding: 11px 14px; font-size: 13.5px; max-width: 520px; margin-inline: auto; }
 .loading { padding: 40px 0; text-align: center; color: var(--muted); display: flex; flex-direction: column; gap: 12px; align-items: center; }
 .loading .bar { width: 200px; }
@@ -1135,7 +1140,14 @@ function renderRep() {
   let h = `<div class="view"><div class="lede"><h1>Report</h1><p>Carica il PDF di ogni giorno. I precedenti non vengono mai sovrascritti.</p></div>`;
   h += `<section class="card"><header><h2>Nuovo report</h2></header><div class="import">`;
   const p = S.pending;
-  if (!p) h += `<button class="btn primary" data-pick>Carica report PDF</button><span class="note" style="padding:0">Accetta il PDF "Not on Display" oppure un file di backup .json.</span>`;
+  if (!p) {
+    const clip = !window.claude && navigator.clipboard && navigator.clipboard.read;
+    h += `<button class="btn primary" data-pick>Carica report PDF</button>
+    <div class="or">oppure</div>
+    <div class="paste" id="pasteZone" contenteditable="true" inputmode="none" role="textbox" aria-label="Incolla qui il file PDF" spellcheck="false">Copia il file PDF, poi <b>tieni premuto qui</b> e scegli <b>Incolla</b><br><span style="font-size:13px">Dal computer: Ctrl+V o trascina il file nella pagina</span></div>
+    ${clip ? '<button class="btn" data-clip>Incolla dagli appunti</button>' : ''}
+    <span class="note" style="padding:0">Accetta il PDF "Not on Display" oppure un file di backup .json.</span>`;
+  }
   else if (p.stage === 'parsing') h += `<span>Leggo ${esc(p.name)}… pagina ${p.page} di ${p.pages || '?'}</span><div class="bar"><i style="width:${p.pages ? 100 * p.page / p.pages : 5}%"></i></div>`;
   else if (p.stage === 'error') h += `<div class="warnbox">${esc(p.msg)}</div><button class="btn" data-cancel>Chiudi</button>`;
   else if (p.stage === 'saving') h += `<span>Salvo nello storico…</span><div class="bar"><i style="width:${p.pct}%"></i></div>`;
@@ -1203,10 +1215,14 @@ const snapId = (m) => `${m.completed}_${m.scanId || '0'}`.replace(/[^A-Za-z0-9_\
 async function handleFile(file) {
   if (!file) return;
   if (/\.json$/i.test(file.name) || file.type === 'application/json') return restoreBackup(file);
-  S.pending = { stage: 'parsing', name: file.name, page: 0, pages: 0 }; render();
+  if (S.tab !== 'rep') setTab('rep');
+  S.pending = { stage: 'parsing', name: file.name || 'PDF incollato', page: 0, pages: 0 }; render();
   try {
-    const lib = await loadPdfjs();
     const data = new Uint8Array(await file.arrayBuffer());
+    const head = String.fromCharCode(...data.slice(0, 1024));
+    if (head.trimStart().startsWith('{')) return restoreBackup(file);
+    if (!head.includes('%PDF')) throw new Error('Il file incollato non è un PDF. Copia il file del report (non il testo o uno screenshot) e riprova.');
+    const lib = await loadPdfjs();
     const pdf = await lib.getDocument({ data, isEvalSupported: false, disableFontFace: true }).promise;
     S.pending.pages = pdf.numPages;
     let lastDraw = 0;
@@ -1214,7 +1230,7 @@ async function handleFile(file) {
     pdf.destroy && pdf.destroy();
     if (!res.meta.completed || !res.rows.length) throw new Error('Questo PDF non sembra un report "Not on Display": non trovo la tabella degli articoli o la data del report.');
     res.meta.id = snapId(res.meta);
-    S.pending = { stage: 'preview', name: file.name, res, dup: S.metas.some((m) => m.id === res.meta.id) };
+    S.pending = { stage: 'preview', name: file.name || 'PDF incollato', res, dup: S.metas.some((m) => m.id === res.meta.id) };
   } catch (e) {
     S.pending = { stage: 'error', msg: e.message || 'Errore nella lettura del PDF.' };
   }
@@ -1316,6 +1332,7 @@ document.addEventListener('click', (ev) => {
   if (d.dash) { const [s, l] = d.dash.split(':'); S.dashSel[s] = l; return render(); }
   if (d.all) { const [s, l] = d.all.split(':'); return openAll(s, l); }
   if (d.sheetmore !== undefined) return sheetMore && sheetMore();
+  if (d.clip !== undefined) return readClipboard();
   if (d.pick !== undefined) { $('#fileIn').value = ''; return $('#fileIn').click(); }
   if (d.cancel !== undefined) { S.pending = null; return render(); }
   if (d.save !== undefined) return savePending();
@@ -1365,6 +1382,38 @@ document.addEventListener('change', (ev) => {
   if (numMap[id]) { S.art[numMap[id]] = v.replace(/[^0-9]/g, ''); S.art.limit = 60; return render(); }
   if (['sLow', 'sOld', 'sBig', 'sPct'].includes(id)) { sumCache.k = null; toast('Soglie aggiornate'); }
 });
+function fileFromList(list) {
+  const fs = Array.from(list || []);
+  return fs.find((f) => f.type === 'application/pdf' || /\.pdf$/i.test(f.name)) || fs.find((f) => f.type === 'application/json' || /\.json$/i.test(f.name)) || fs[0] || null;
+}
+document.addEventListener('paste', (e) => {
+  const cd = e.clipboardData;
+  let f = cd ? fileFromList(cd.files) : null;
+  if (!f && cd && cd.items) for (const it of cd.items) { if (it.kind === 'file') { const x = it.getAsFile(); if (x) { f = x; break; } } }
+  const inZone = e.target && e.target.closest && e.target.closest('#pasteZone');
+  if (f) { e.preventDefault(); if (document.activeElement) document.activeElement.blur(); handleFile(f); return; }
+  if (inZone) { e.preventDefault(); toast('Negli appunti non c\'è un file PDF. Copia il file del report, non il suo testo, e riprova.'); }
+});
+document.addEventListener('beforeinput', (e) => { if (e.target && e.target.id === 'pasteZone' && e.inputType !== 'insertFromPaste') e.preventDefault(); });
+document.addEventListener('dragover', (e) => { if (e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files')) { e.preventDefault(); const z = $('#pasteZone'); if (z) z.classList.add('over'); } });
+document.addEventListener('dragleave', () => { const z = $('#pasteZone'); if (z) z.classList.remove('over'); });
+document.addEventListener('drop', (e) => {
+  const f = e.dataTransfer ? fileFromList(e.dataTransfer.files) : null;
+  if (!f) return;
+  e.preventDefault(); handleFile(f);
+});
+async function readClipboard() {
+  try {
+    const items = await navigator.clipboard.read();
+    for (const it of items) {
+      const t = it.types.find((x) => /pdf/i.test(x)) || it.types.find((x) => /json/i.test(x));
+      if (t) { const b = await it.getType(t); return handleFile(new File([b], /json/i.test(t) ? 'backup.json' : 'appunti.pdf', { type: /json/i.test(t) ? 'application/json' : 'application/pdf' })); }
+    }
+    toast('Negli appunti non trovo un PDF. Prova a tenere premuto il riquadro e scegliere Incolla.');
+  } catch (e) {
+    toast('Il telefono non permette di leggere gli appunti da qui. Tieni premuto il riquadro e scegli Incolla.');
+  }
+}
 $('#sheetBack').addEventListener('click', backSheet);
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#sheet').hidden) backSheet(); });
 
