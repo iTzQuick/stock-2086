@@ -1,7 +1,7 @@
 // Copia l'app nel telefono per farla funzionare anche offline.
-const VERSION = 'stock-v6';
+const VERSION = 'stock-v7';
 const FILES = [
-  './', 'index.html', 'manifest.webmanifest', 'lib/pdf.min.js', 'lib/pdf.worker.min.js', 'lib/xlsx.full.min.js',
+  './', 'index.html', 'manifest.webmanifest', 'lib/xlsx.full.min.js',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/maskable-512.png', 'icons/apple-touch-icon.png',
   'fonts/barlow-condensed-latin-600-normal.woff2', 'fonts/barlow-condensed-latin-700-normal.woff2',
   'fonts/ibm-plex-sans-latin-400-normal.woff2', 'fonts/ibm-plex-sans-latin-500-normal.woff2', 'fonts/ibm-plex-sans-latin-600-normal.woff2',

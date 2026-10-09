@@ -213,256 +213,9 @@ main { flex: 1 1 auto; overflow-y: auto; padding-inline: 16px; padding-block: 14
   <div class="sheet-top"><button class="back" id="sheetBack" aria-label="Indietro"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 5l-7 7 7 7"/></svg></button><h2 id="sheetTitle"></h2></div>
   <div class="sheet-body" id="sheetBody"></div>
 </section>
-<input type="file" id="fileIn" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/pdf,.pdf,application/json,.json" multiple hidden>
+<input type="file" id="fileIn" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/json,.json" hidden>
 <div class="toast" id="toast" hidden role="status"></div>
 
-<script>
-// Parser del report "Not on Display" (Oracle BI Publisher).
-// Ricostruisce la griglia dalle linee della tabella e assegna ogni testo alla sua cella.
-(function (root) {
-  const MONTHS = { Jan: 1, Feb: 2, Mar: 3, Apr: 4, May: 5, Jun: 6, Jul: 7, Aug: 8, Sep: 9, Oct: 10, Nov: 11, Dec: 12 };
-  const pad = (n) => String(n).padStart(2, '0');
-
-  function mul(m1, m2) {
-    return [
-      m1[0] * m2[0] + m1[2] * m2[1], m1[1] * m2[0] + m1[3] * m2[1],
-      m1[0] * m2[2] + m1[2] * m2[3], m1[1] * m2[2] + m1[3] * m2[3],
-      m1[0] * m2[4] + m1[2] * m2[5] + m1[4], m1[1] * m2[4] + m1[3] * m2[5] + m1[5],
-    ];
-  }
-  const ap = (m, x, y) => [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
-
-  // Estrae segmenti orizzontali/verticali (rettangoli sottili e linee) in coordinate top-down
-  async function getSegments(page, OPS, H) {
-    const ol = await page.getOperatorList();
-    let ctm = [1, 0, 0, 1, 0, 0];
-    const stack = [];
-    const hs = [], vs = [];
-    const addBox = (x0, y0, x1, y1) => {
-      const l = Math.min(x0, x1), r = Math.max(x0, x1);
-      const t = H - Math.max(y0, y1), b = H - Math.min(y0, y1);
-      const w = r - l, h = b - t;
-      if (h < 2.5 && w > 5) hs.push({ y: (t + b) / 2, x0: l, x1: r });
-      else if (w < 2.5 && h > 5) vs.push({ x: (l + r) / 2, top: t, bottom: b });
-    };
-    for (let i = 0; i < ol.fnArray.length; i++) {
-      const fn = ol.fnArray[i], args = ol.argsArray[i];
-      if (fn === OPS.save) stack.push(ctm.slice());
-      else if (fn === OPS.restore) ctm = stack.pop() || [1, 0, 0, 1, 0, 0];
-      else if (fn === OPS.transform) ctm = mul(ctm, args);
-      else if (fn === OPS.constructPath) {
-        const ops = args[0], co = args[1];
-        let k = 0, cur = null;
-        for (const op of ops) {
-          if (op === OPS.rectangle) {
-            const [x, y, w, h] = co.slice(k, k + 4); k += 4;
-            const p1 = ap(ctm, x, y), p2 = ap(ctm, x + w, y + h);
-            addBox(p1[0], p1[1], p2[0], p2[1]);
-          } else if (op === OPS.moveTo) { cur = ap(ctm, co[k], co[k + 1]); k += 2; }
-          else if (op === OPS.lineTo) {
-            const p = ap(ctm, co[k], co[k + 1]); k += 2;
-            if (cur) {
-              if (Math.abs(p[1] - cur[1]) < 0.5) addBox(cur[0], cur[1] - 0.5, p[0], cur[1] + 0.5);
-              else if (Math.abs(p[0] - cur[0]) < 0.5) addBox(cur[0] - 0.5, cur[1], cur[0] + 0.5, p[1]);
-            }
-            cur = p;
-          } else if (op === OPS.curveTo) k += 6;
-          else if (op === OPS.curveTo2 || op === OPS.curveTo3) k += 4;
-        }
-      }
-    }
-    return { hs, vs };
-  }
-
-  function uniq(vals, tol) {
-    vals.sort((a, b) => a - b);
-    const out = [];
-    for (const v of vals) if (!out.length || v - out[out.length - 1] > tol) out.push(v);
-    return out;
-  }
-
-  function buildTables(hs, vs) {
-    const groups = new Map();
-    for (const v of vs) {
-      const key = Math.round(v.top) + ':' + Math.round(v.bottom);
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(v);
-    }
-    const tables = [];
-    for (const g of groups.values()) {
-      const xs = uniq(g.map((v) => v.x), 2);
-      if (xs.length < 3) continue;
-      const top = Math.min(...g.map((v) => v.top)), bottom = Math.max(...g.map((v) => v.bottom));
-      const ys = uniq(hs.filter((h) => h.y > top - 2 && h.y < bottom + 2 && h.x1 > xs[0] + 5 && h.x0 < xs[xs.length - 1] - 5).map((h) => h.y), 2);
-      if (ys.length < 2) continue;
-      tables.push({ xs, ys, top });
-    }
-    tables.sort((a, b) => a.top - b.top);
-    return tables;
-  }
-
-  function locate(arr, v) {
-    for (let i = 0; i < arr.length - 1; i++) if (v >= arr[i] && v < arr[i + 1]) return i;
-    return -1;
-  }
-
-  function cellLines(items) {
-    items.sort((a, b) => a.cy - b.cy || a.x - b.x);
-    const lines = [];
-    for (const it of items) {
-      const L = lines.find((l) => Math.abs(l.cy - it.cy) < it.fs * 0.5);
-      if (L) L.items.push(it); else lines.push({ cy: it.cy, items: [it] });
-    }
-    lines.sort((a, b) => a.cy - b.cy);
-    return lines.map((l) => {
-      l.items.sort((a, b) => a.x - b.x);
-      let s = '', end = null;
-      for (const it of l.items) {
-        if (end !== null && it.x - end > it.fs * 0.15 && !s.endsWith(' ') && !it.str.startsWith(' ')) s += ' ';
-        s += it.str; end = it.x + it.w;
-      }
-      return { text: s.replace(/\s+/g, ' ').trim(), left: l.items[0].x, right: end };
-    }).filter((l) => l.text);
-  }
-
-  async function parsePages(pdf, OPS, onProgress) {
-    const grids = [];
-    for (let p = 1; p <= pdf.numPages; p++) {
-      const page = await pdf.getPage(p);
-      const H = page.view[3] - page.view[1];
-      const { hs, vs } = await getSegments(page, OPS, H);
-      const tables = buildTables(hs, vs);
-      const tc = await page.getTextContent();
-      const cells = tables.map((t) => Array.from({ length: t.ys.length - 1 }, () => Array.from({ length: t.xs.length - 1 }, () => [])));
-      for (const it of tc.items) {
-        if (!it.str || !it.str.trim()) continue;
-        const tr = it.transform;
-        const fs = Math.hypot(tr[2], tr[3]) || it.height || 8;
-        const x = tr[4], w = it.width;
-        const cy = H - (tr[5] + fs * 0.35), cx = x + w / 2;
-        for (let ti = 0; ti < tables.length; ti++) {
-          const t = tables[ti];
-          const r = locate(t.ys, cy), c = locate(t.xs, cx);
-          if (r >= 0 && c >= 0) { cells[ti][r][c].push({ str: it.str, x, w, cy, fs }); break; }
-        }
-      }
-      tables.forEach((t, ti) => {
-        grids.push({
-          page: p,
-          widths: t.xs.slice(1).map((x, i) => x - t.xs[i]),
-          rows: cells[ti].map((row) => row.map(cellLines)),
-        });
-      });
-      page.cleanup && page.cleanup();
-      if (onProgress) onProgress(p, pdf.numPages);
-    }
-    return grids;
-  }
-
-  // --- normalizzazione celle ---
-  const plain = (L) => L.map((l) => l.text).join(' ').trim();
-  const code = (L) => L.map((l) => l.text).join('').replace(/\s+/g, ' ').trim();
-  function joinHyphen(L) {
-    let s = '';
-    L.forEach((l, i) => { s += (i && !/[-/]$/.test(s) ? ' ' : '') + l.text; });
-    return s.trim();
-  }
-  // Le descrizioni vanno a capo anche a metà parola ("WH/T", "W/HT$"):
-  // un frammento di 1-2 lettere si riattacca alla riga precedente.
-  function desc(L) {
-    let s = '';
-    L.forEach((l, i) => {
-      if (i) {
-        const core = l.text.replace(/[$'"]+$/, '');
-        const glue = /^[A-Za-z]{1,2}$/.test(core) && /[A-Za-z]$/.test(L[i - 1].text);
-        s += glue || /\/$/.test(L[i - 1].text) ? '' : ' ';
-      }
-      s += l.text;
-    });
-    return s.trim();
-  }
-  const num = (s) => {
-    const v = parseFloat(String(s).replace(/[^0-9.\-]/g, ''));
-    return isFinite(v) ? v : 0;
-  };
-  function shortDate(s) {
-    const m = /^(\d{1,2})-([A-Za-z]{3})-(\d{2,4})$/.exec(String(s).trim());
-    if (!m || !MONTHS[m[2]]) return '';
-    const y = m[3].length === 2 ? 2000 + +m[3] : +m[3];
-    return `${y}-${pad(MONTHS[m[2]])}-${pad(+m[1])}`;
-  }
-  function headerDate(s) {
-    const m = /(\d{1,2}):(\d{2})\s+(\d{1,2})-([A-Za-z]{3})-(\d{4})/.exec(s);
-    if (!m) return null;
-    return `${m[5]}-${pad(MONTHS[m[4]])}-${pad(+m[3])}T${pad(+m[1])}:${m[2]}`;
-  }
-  function fragCount(f) {
-    if (!f) return 0;
-    return f.split(',').reduce((n, part) => {
-      const m = /\((\d+)\)\s*$/.exec(part.trim());
-      return n + (m ? +m[1] : part.trim() ? 1 : 0);
-    }, 0);
-  }
-
-  async function parseReport(pdf, OPS, onProgress) {
-    const grids = await parsePages(pdf, OPS, onProgress);
-    const meta = {}; const rows = []; const warnings = [];
-    for (const g of grids) {
-      const ncol = g.widths.length;
-      for (const row of g.rows) {
-        const t = row.map(plain);
-        if (ncol === 14) {
-          if (t[0] === 'Gender' || !t.join('')) continue;
-          const r = {
-            gender: plain(row[0]),
-            brand: plain(row[1]),
-            desc: desc(row[2]),
-            style: code(row[3]),
-            rrp: num(t[4]), sell: num(t[5]), ptype: t[6].toUpperCase(), qty: num(t[7]),
-            frag: joinHyphen(row[8]),
-            last: shortDate(t[9]),
-            u7: num(t[10]), v7: num(t[11]),
-            launch: shortDate(t[12]),
-            barcode: code(row[13]),
-            page: g.page,
-          };
-          if (r.gender.startsWith('Returns') || r.brand.startsWith('DUMMY')) { meta.dummyRows = (meta.dummyRows || 0) + 1; continue; }
-          if (t[9] && !r.last) warnings.push(`Data ultima vendita non letta: "${t[9]}" (${r.style})`);
-          if (r.frag && fragCount(r.frag) !== r.qty) warnings.push(`Taglie non coerenti con Qty per ${r.style}`);
-          rows.push(r);
-        } else if (ncol === 8 && t[0] !== 'Scan ID' && t.join('')) {
-          meta.scanId = t[0];
-          meta.completed = headerDate(t[1]);
-          meta.by = code(row[2]);
-          meta.branchName = plain(row[3]);
-          meta.branch = t[4];
-          meta.scanned = num(t[5]);
-          meta.declaredStyles = num(t[6]);
-          meta.declaredValue = num(t[7]);
-        }
-      }
-    }
-    // barcode unico come chiave riga
-    const seen = {};
-    for (const r of rows) {
-      const k = r.barcode || `${r.gender}|${r.style}`;
-      seen[k] = (seen[k] || 0) + 1;
-      r.key = seen[k] > 1 ? `${k}#${seen[k]}` : k;
-    }
-    const value = Math.round(rows.reduce((s, r) => s + r.qty * r.sell, 0) * 100) / 100;
-    const checks = {
-      rowsOk: meta.declaredStyles != null && rows.length + (meta.dummyRows || 0) === meta.declaredStyles,
-      valueOk: meta.declaredValue != null && Math.abs(value - meta.declaredValue) < 0.5,
-      rows: rows.length, dummy: meta.dummyRows || 0, value,
-    };
-    return { meta, rows, checks, warnings };
-  }
-
-  const api = { parseReport, shortDate, fragCount };
-  if (typeof module !== 'undefined') module.exports = api; else root.NODParser = api;
-})(this);
-
-</script>
 <script>
 // Motore storico: confronta snapshot consecutivi e genera eventi.
 // Distingue i DATI DEL REPORT (campi letti dal PDF) dai CALCOLI (differenze, stime).
@@ -819,7 +572,7 @@ main { flex: 1 1 auto; overflow-y: auto; padding-inline: 16px; padding-block: 14
 <script>
 (function () {
 'use strict';
-const E = window.NODEngine, P = window.NODParser, XP = window.NODXlsx;
+const E = window.NODEngine, XP = window.NODXlsx;
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const nf = new Intl.NumberFormat('it-IT');
@@ -942,6 +695,7 @@ function enrich(r) {
   if (/^Accessories/i.test(r.gender)) { r.dept = 'Accessori'; r.cat = 'Accessori'; }
   else { r.dept = m ? DEPTS[m[1]] || m[1] : r.gender; r.cat = m ? CATS[m[2]] || m[2] : r.gender; }
   const foot = /Footwear/i.test(r.gender);
+  r.frag = '';
   r.sizes = !r.frag ? [] : r.frag.split(',').map((p) => p.trim()).filter(Boolean).map((p) => {
     const mm = /^(.*?)\s*\((\d+)\)$/.exec(p);
     return { z: normSize(mm ? mm[1] : p, foot), raw: mm ? mm[1] : p, n: mm ? +mm[2] : 1 };
@@ -953,7 +707,7 @@ function enrich(r) {
 const S = {
   metas: [], branch: null, model: null, idx: -1, tab: 'dash',
   dashSel: { stock: 'up', sales: 'top', prices: 'promo', news: 'nuovi' },
-  art: { q: '', brand: '', dept: '', cat: '', size: '', loc: '', ptype: '', qmin: '', qmax: '', u7min: '', lastOld: '', onlyNew: false, sort: 'qty', limit: 60, showFilters: false },
+  art: { q: '', brand: '', dept: '', cat: '', loc: '', ptype: '', qmin: '', qmax: '', u7min: '', lastOld: '', onlyNew: false, sort: 'qty', limit: 60, showFilters: false },
   ev: { from: null, to: null, types: null, q: '', limit: 200 },
   pending: null, confirmDel: null, busy: false,
 };
@@ -1038,7 +792,7 @@ const DASH = [
   { id: 'stock', title: 'Stock', lists: [
     ['up', 'Maggiori aumenti', true, (s) => s.stock.up, (r) => `<span class="big">${fN(r.qty)}</span>${dp(r.calc.dPrev)}`],
     ['down', 'Maggiori cali', true, (s) => s.stock.down, (r) => `<span class="big">${fN(r.qty)}</span>${dp(r.calc.dPrev)}`],
-    ['low', 'Stock basso', false, (s) => s.stock.low, (r) => qtyRight(r, r.frag ? esc(r.frag) : 'pz')],
+    ['low', 'Stock basso', false, (s) => s.stock.low, (r) => qtyRight(r)],
     ['out', 'Usciti / a zero', true, (s) => s.stock.out, null],
   ] },
   { id: 'sales', title: 'Vendite', lists: [
@@ -1128,7 +882,6 @@ const EV_GROUPS = [
   ['Stock', ['qty_su', 'qty_giu', 'zero', 'scomparso', 'nuovo', 'tornato']],
   ['Prezzi', ['promo', 'varprezzo', 'full', 'ptype', 'prezzo', 'rrp']],
   ['Vendite', ['u7', 'v7', 'last']],
-  ['Taglie', ['taglie']],
 ];
 function renderVar() {
   if (!S.model) return emptyState();
@@ -1200,12 +953,11 @@ function artBody() {
   const pass = (r, skip) => (
     (tokens.length !== 1 || norm(r.style).includes(tokens[0]) || norm(r.desc).includes(tokens[0]) || (r.barcode && norm(r.barcode).includes(tokens[0])) || (r.loc && norm(r.loc).includes(tokens[0]))) &&
     (skip === 'dept' || !a.dept || r.dept === a.dept) && (skip === 'cat' || !a.cat || r.cat === a.cat) &&
-    (skip === 'brand' || !a.brand || r.brand === a.brand) && (skip === 'size' || !a.size || r.sizes.some((z) => z.z === a.size)));
+    (skip === 'brand' || !a.brand || r.brand === a.brand));
   const countBy = (skip, keyFn) => { const m = new Map(); rows.forEach((r) => { if (pass(r, skip)) for (const k of keyFn(r)) m.set(k, (m.get(k) || 0) + 1); }); return m; };
   const deptC = countBy('dept', (r) => [r.dept]);
   const catC = countBy('cat', (r) => [r.cat]);
   const brandC = countBy('brand', (r) => [r.brand]);
-  const sizeC = new Map(); rows.forEach((r) => { if (pass(r, 'size')) for (const z of r.sizes) sizeC.set(z.z, (sizeC.get(z.z) || 0) + z.n); });
   const DEPT_ORDER = ['Uomo', 'Donna', 'Junior', 'Bambino', 'Infant', 'Replica', 'Accessori'];
   const f = rows.filter((r) => {
     if (!pass(r)) return false;
@@ -1226,7 +978,7 @@ function artBody() {
     style: (x, y) => x.style.localeCompare(y.style),
   };
   f.sort(sorts[a.sort] || sorts.qty);
-  const mainActive = ['dept', 'cat', 'brand', 'size'].filter((k) => a[k] !== '').length;
+  const mainActive = ['dept', 'cat', 'brand'].filter((k) => a[k] !== '').length;
   const active = ['ptype', 'qmin', 'qmax', 'u7min', 'lastOld', 'loc'].filter((k) => a[k] !== '').length + (a.onlyNew ? 1 : 0);
   const o = (v, l, cur) => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${esc(l)}</option>`;
   const opts = (map, cur, order) => { const keys = [...map.keys()]; if (cur && !map.has(cur)) keys.push(cur); keys.sort(order || ((x, y) => x.localeCompare(y))); return keys.map((k) => o(k, `${k} (${fN(map.get(k) || 0)})`, cur)).join(''); };
@@ -1234,11 +986,8 @@ function artBody() {
   h += `<section class="card"><div class="filters" style="padding-top:12px">
     <div class="row2"><div class="field"><label for="fDept">Reparto</label><select id="fDept">${o('', 'Tutti', a.dept)}${opts(deptC, a.dept, byDept)}</select></div>
     <div class="field"><label for="fCat">Categoria</label><select id="fCat">${o('', 'Tutte', a.cat)}${opts(catC, a.cat)}</select></div></div>
-    <div class="row2"><div class="field"><label for="fBrand">Brand</label><select id="fBrand">${o('', 'Tutti', a.brand)}${opts(brandC, a.brand)}</select></div>
-    <div class="field"><label for="fSize">Taglia disponibile</label>${sizeC.size || a.size ? `<select id="fSize">${o('', 'Tutte', a.size)}${opts(sizeC, a.size, sizeCmp)}</select>` : `<select id="fSize" disabled><option>Nessuna taglia</option></select>`}</div></div>
-    ${!sizeC.size && !a.size ? '<p class="note" style="padding:0">Per filtrare per taglia, carica il PDF Not on Display insieme al Condensed List dello stesso giorno.</p>' : ''}
-    ${a.size ? `<p class="note" style="padding:0">Le taglie arrivano dal PDF caricato insieme all'Excel, che le indica solo per gli articoli con 3 pezzi o meno: qui vedi quelli che hanno ancora la taglia ${esc(a.size)}. Tra parentesi nell'elenco i pezzi disponibili.</p>` : ''}
-    ${mainActive ? '<button class="btn" data-clearmain>Azzera reparto, categoria, brand e taglia</button>' : ''}
+    <div class="field"><label for="fBrand">Brand</label><select id="fBrand">${o('', 'Tutti', a.brand)}${opts(brandC, a.brand)}</select></div>
+    ${mainActive ? '<button class="btn" data-clearmain>Azzera reparto, categoria e brand</button>' : ''}
   </div>
   <header style="padding-top:0"><button class="btn ghost" data-togglefilters style="padding-inline:0;border:0">Altri filtri${active ? ` (${active})` : ''} ${a.showFilters ? '▴' : '▾'}</button>
     <select id="artSort" aria-label="Ordina" style="background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-size:13px">
@@ -1257,11 +1006,9 @@ function artBody() {
     </div>`;
   }
   const totQ = f.reduce((x, r) => x + r.qty, 0), totU = f.reduce((x, r) => x + r.u7, 0);
-  const totZ = a.size ? f.reduce((x, r) => x + r.sizes.filter((z) => z.z === a.size).reduce((y, z) => y + z.n, 0), 0) : null;
-  h += `<div class="toolbar" style="padding:0 12px 10px"><span>${fN(f.length)} righe · ${fN(totQ)} pz${totZ != null ? ` · ${fN(totZ)} in taglia ${esc(a.size)}` : ''} · ${fN(totU)} venduti 7gg</span></div><div class="list">`;
+  h += `<div class="toolbar" style="padding:0 12px 10px"><span>${fN(f.length)} righe · ${fN(totQ)} pz · ${fN(totU)} venduti 7gg</span></div><div class="list">`;
   h += f.slice(0, a.limit).map((r) => {
-    const inSize = a.size ? r.sizes.filter((z) => z.z === a.size).reduce((x, z) => x + z.n, 0) : 0;
-    const sub = a.size ? `taglia ${esc(a.size)}: ${inSize} pz` : `${pt(r.ptype)} ${fE(r.sell)}`;
+    const sub = `${pt(r.ptype)} ${fE(r.sell)}`;
     return rowItem(r, `<span class="big">${fN(r.qty)}</span><span class="small">${sub}</span>${r.calc.dPrev ? dp(r.calc.dPrev) : ''}`);
   }).join('');
   if (!f.length) h += `<div class="empty">Nessun articolo trovato.</div>`;
@@ -1281,7 +1028,7 @@ function compareTable(rs) {
     ['Sconto su RRP', (r) => discTxt(r.calc.discount), 1],
     ['Vendite 7gg', (r) => fN(r.u7)], ['Valore 7gg', (r) => fE(r.v7)], ['Ultima vendita', (r) => fD(r.last)],
     ['Stima vendite', (r) => r.calc.estSales == null ? '—' : fN(r.calc.estSales), 1],
-    ['Taglie', (r) => r.frag ? esc(r.frag) : 'non disponibili'], ['Ubicazione', (r) => r.loc ? `<span class="mono">${esc(r.loc)}</span>` : '—'],
+    ['Ubicazione', (r) => r.loc ? `<span class="mono">${esc(r.loc)}</span>` : '—'],
   ];
   return `<div class="card"><div class="cmpwrap" style="border:0"><table class="cmp"><thead><tr><th scope="col"></th>${rs.map((r) => `<th scope="col"><button class="code" data-open="${esc(r.key)}" style="background:none;border:0;padding:0;text-decoration:underline">${esc(r.style)}</button></th>`).join('')}</tr></thead><tbody>${lines.map((l) => `<tr${l[2] ? ' class="c"' : ''}><th scope="row">${l[0]}</th>${rs.map((r) => `<td>${l[1](r)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
   <p class="note">Le righe marcate ·calc sono calcolate dall'app confrontando i report. La stima vendite conta i giorni in cui la data di ultima vendita è avanzata.</p></div>`;
@@ -1329,7 +1076,7 @@ function openItem(key) {
     h += `<section class="card"><header><h2>Dati del report</h2>${tagR}</header><div class="grid">
       ${g('Stock attuale', fN(r.qty) + ' pz')}${g('Prezzo vendita', fE(r.sell))}${g('RRP', r.rrp ? fE(r.rrp) : '—')}
       ${g('Price Type', pt(r.ptype))}${g('Vendite 7gg', fN(r.u7) + ' pz')}${g('Valore vendite 7gg', fE(r.v7))}
-      ${g('Ultima vendita', fD(r.last))}${g('Taglie', r.frag ? esc(r.frag) + ' (dal PDF)' : 'non disponibili')}${g('Ubicazione', r.loc ? `<span class="mono">${esc(r.loc)}</span>` : '—')}${g('Launch', fD(r.launch))}
+      ${g('Ultima vendita', fD(r.last))}${g('Ubicazione', r.loc ? `<span class="mono">${esc(r.loc)}</span>` : '—')}${g('Launch', fD(r.launch))}
     </div><p class="note">Vendite 7gg è un totale mobile degli ultimi 7 giorni, non le vendite di oggi.</p></section>
     <section class="card"><header><h2>Calcoli</h2>${tagC}</header><div class="grid c">
       ${g('Stock iniziale', fN(r.calc.firstQty) + (r.calc.fromDay1 ? ' (Giorno 1)' : ' (dal ' + fD(S.model.snaps[r.calc.firstIdx].meta.completed) + ')'))}
@@ -1370,11 +1117,9 @@ function renderRep() {
     <div class="or">oppure</div>
     <div class="paste" id="pasteZone" contenteditable="true" inputmode="none" role="textbox" aria-label="Incolla qui i file del report" spellcheck="false">Copia il file, poi <b>tieni premuto qui</b> e scegli <b>Incolla</b><br><span style="font-size:13px">Dal computer: Ctrl+V o trascina i file nella pagina</span></div>
     ${clip ? '<button class="btn" data-clip>Incolla dagli appunti</button>' : ''}
-    <div class="infobox"><b>Ogni giorno:</b> il file Excel <span class="mono">Condensed_List</span>, che contiene tessile, calzature e accessori.<br>
-    <b>Facoltativo:</b> selezionalo insieme al PDF Not on Display dello stesso giorno per avere le taglie.<br>
-    Vanno bene anche i 3 Excel separati (tessile, calzature, accessori) presi insieme, o un backup .json.</div>`;
+    <div class="infobox">Ogni giorno carica il file Excel <span class="mono">Br2086-Condensed_List</span>: contiene tessile, calzature e accessori. Puoi caricare qui anche un backup .json.</div>`;
   }
-  else if (p.stage === 'parsing') h += `<span>Leggo ${esc(p.name)}…${p.pages ? ` PDF pagina ${p.page} di ${p.pages}` : ''}</span><div class="bar"><i style="width:${p.pages ? 100 * p.page / p.pages : 10}%"></i></div>`;
+  else if (p.stage === 'parsing') h += `<span>Leggo ${esc(p.name)}…</span><div class="bar"><i style="width:30%"></i></div>`;
   else if (p.stage === 'error') h += `<div class="warnbox">${esc(p.msg)}</div><button class="btn" data-cancel>Chiudi</button>`;
   else if (p.stage === 'saving') h += `<span>Salvo nello storico…</span><div class="bar"><i style="width:${p.pct}%"></i></div>`;
   else if (p.stage === 'preview') {
@@ -1383,13 +1128,12 @@ function renderRep() {
     <div class="checks">
       <span class="${c.complete ? 'ok' : 'ko'}">${c.complete ? '✓ Completo: tessile, calzature e accessori' : '✗ Mancano: ' + esc(c.missingParts.join(', '))}</span>
       <span>${fN(c.rows)} articoli · ${fN(c.qty)} pezzi · ${fE(c.value)}</span>
-      <span class="${m.sizesFromPdf ? 'ok' : ''}">${m.pdfDate ? (m.sizesFromPdf ? `✓ Taglie dal PDF per ${fN(m.sizesFromPdf)} articoli` : 'PDF letto, ma nessuna taglia utilizzabile') + (m.sizesSkipped ? ` · ${fN(m.sizesSkipped)} scartate perché non tornano con l'Excel` : '') : 'Nessun PDF: taglie non disponibili (facoltativo)'}</span>
       ${m.ignored.length ? `<span class="note" style="padding:0">Ho usato il Condensed List e ignorato: ${esc(m.ignored.join(', '))}</span>` : ''}
     </div>`;
     if (r.warnings.length) h += `<div class="infobox">${r.warnings.slice(0, 5).map(esc).join('<br>')}${r.warnings.length > 5 ? `<br>…e altri ${r.warnings.length - 5}` : ''}</div>`;
     if (p.dup) h += `<div class="warnbox">Per il ${fD(m.completed)} c'è già un report nello storico (ore ${esc(p.dup.completed.slice(11, 16))}). Ne tengo uno al giorno: per sostituirlo, eliminalo dalla lista qui sotto e ricarica il file.</div><button class="btn" data-cancel>Chiudi</button>`;
     else {
-      if (!c.complete) h += `<div class="warnbox">Manca una parte del negozio: salvandolo, gli articoli mancanti risulterebbero usciti dal report. Carica il Condensed List oppure tutti e 3 i file.</div>`;
+      if (!c.complete) h += `<div class="warnbox">In questo file manca una parte del negozio: salvandolo, gli articoli mancanti risulterebbero usciti dal report.</div>`;
       if (p.same) h += `<div class="infobox">I dati sono identici al report precedente: probabilmente il sistema non li ha ancora aggiornati. Salvarlo non aggiunge informazioni.</div>`;
       const ok = c.complete && !p.same;
       h += `<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" data-save>${ok ? 'Salva nello storico' : 'Salva comunque'}</button><button class="btn" data-cancel>Annulla</button></div>`;
@@ -1398,13 +1142,13 @@ function renderRep() {
   h += `</div></section>`;
   const mode = { cloud: ['on', 'Storico salvato sul tuo account: lo ritrovi da ogni dispositivo.'], local: [Store.persisted ? 'on' : 'warn', Store.persisted ? 'Storico salvato su questo telefono, protetto dalla pulizia automatica. Esporta comunque un backup ogni settimana.' : 'Storico salvato su questo telefono. Esporta un backup ogni settimana: se cancelli i dati del browser lo perdi.'], memory: ['warn', 'Archivio non disponibile: i dati si perdono chiudendo la pagina.'] }[Store.mode];
   h += `<div class="status"><span class="dot ${mode[0]}"></span>${mode[1]}</div>`;
-  const list = S.metas.slice().reverse();
+  const list = S.metas.filter((m) => m.source === 'xlsx').slice().reverse();
   h += `<section class="card"><header><h2>Storico</h2><span class="note" style="padding:0">${fN(list.length)} report</span></header><div class="list">`;
   if (!list.length) h += `<div class="empty">Ancora nessun report.</div>`;
   const first = S.metas.find((m) => m.branch === S.branch && m.source === 'xlsx');
   for (const m of list) {
     const sub = m.source === 'xlsx'
-      ? `${esc(m.branch)} · ${fN(m.rows)} articoli · ${ef0.format(m.declaredValue || 0)} · ${m.checks && m.checks.complete ? '<span class="ok">completo</span>' : '<span class="ko">incompleto</span>'}${m.sizesFromPdf ? ' · con taglie' : ''}`
+      ? `${esc(m.branch)} · ${fN(m.rows)} articoli · ${ef0.format(m.declaredValue || 0)} · ${m.checks && m.checks.complete ? '<span class="ok">completo</span>' : '<span class="ko">incompleto</span>'}`
       : `PDF · <span class="ko">non usato nello storico</span>: il PDF conta meno pezzi del reale`;
     h += `<div class="snap"><div><b>${esc(fSnap(m))}</b>${first && first.id === m.id ? ' <span class="tag rep">giorno 1</span>' : ''}<div class="sub">${sub}</div></div>
       <div class="acts">${S.confirmDel === m.id ? `<button class="btn danger" data-delok="${esc(m.id)}">Elimina</button><button class="btn" data-delno>No</button>` : `<button class="btn ghost" data-del="${esc(m.id)}" aria-label="Elimina report">Elimina</button>`}</div></div>`;
@@ -1416,32 +1160,18 @@ function renderRep() {
     <div class="row2"><div class="field"><label for="sBig">Cambio significativo da (pz)</label><input id="sBig" inputmode="numeric" value="${settings.bigAbs}"></div>
     <div class="field"><label for="sPct">…oppure da (%)</label><input id="sPct" inputmode="numeric" value="${settings.bigPct}"></div></div>
   </div></section>`;
-  h += `<section class="card"><header><h2>Backup</h2></header><div class="import"><p style="margin:0" class="note">Un file con tutti i report salvati. Salvalo su Drive, iCloud o inviatelo per email: per ripristinarlo, caricalo con il pulsante "Carica report PDF".</p><button class="btn" data-backup ${S.metas.length ? '' : 'disabled'}>Esporta backup</button></div></section>`;
+  h += `<section class="card"><header><h2>Backup</h2></header><div class="import"><p style="margin:0" class="note">Un file con tutti i report salvati. Salvalo su Drive, iCloud o inviatelo per email: per ripristinarlo, caricalo con il pulsante "Carica Condensed List".</p><button class="btn" data-backup ${S.metas.length ? '' : 'disabled'}>Esporta backup</button></div></section>`;
   h += `<section class="card"><header><h2>Come leggere i dati</h2></header><div class="import" style="font-size:13px;gap:8px">
     <div>${tagR} Qty, prezzi, RRP, Price Type, ultima vendita, vendite 7gg e ubicazione sono letti dal Condensed List così come sono.</div>
     <div>${tagC} Differenze, stock iniziale, sconti e stime vendite sono calcolati confrontando i report salvati.</div>
     <div>TK = promo · NT = variazione di prezzo non promo, anche in aumento sopra l'RRP · FULL = prezzo pieno.</div>
     <div>Il report elenca solo articoli con stock: chi esce dal report può essere esaurito, trasferito o esposto.</div>
-    <div>Le taglie arrivano dal PDF Not on Display, se lo carichi insieme all'Excel. Il PDF le indica solo per gli articoli con 3 pezzi o meno, e l'app le usa solo quando tornano con la quantità dell'Excel.</div>
     <div>Un articolo con due linee prezzo nello stesso reparto è mostrato come una riga sola, con i pezzi sommati.</div>
   </div></section>`;
   return h + '</div>';
 }
 
 /* ---------- import ---------- */
-let pdfjsReady = null;
-function loadPdfjs() {
-  if (pdfjsReady) return pdfjsReady;
-  pdfjsReady = new Promise((res, rej) => {
-    const s = document.createElement('script');
-    s.src = 'lib/pdf.min.js';
-    s.onload = () => { try { window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'lib/pdf.worker.min.js'; res(window.pdfjsLib); } catch (e) { rej(e); } };
-    s.onerror = () => { pdfjsReady = null; rej(new Error('Non riesco ad avviare il lettore PDF. Chiudi e riapri l\'app, poi riprova.')); };
-    document.head.appendChild(s);
-  });
-  return pdfjsReady;
-}
-const snapId = (m) => `${m.completed}_${m.scanId || '0'}`.replace(/[^A-Za-z0-9_\-.~:@+]/g, '-');
 
 let xlsxReady = null;
 function loadXlsx() {
@@ -1467,30 +1197,23 @@ async function handleFiles(list) {
       const data = new Uint8Array(await f.arrayBuffer());
       const head = String.fromCharCode(...data.slice(0, 1024));
       if (head.trimStart().startsWith('{')) items.push({ type: 'json', f });
-      else if (head.includes('%PDF')) items.push({ type: 'pdf', f, data });
+      else if (head.includes('%PDF')) throw new Error('Questo è un PDF: l\'app ora usa solo il Condensed List in Excel.');
       else if (head.startsWith('PK') || head.startsWith('\xD0\xCF')) items.push({ type: 'xlsx', f, data });
       else throw new Error(`${f.name || 'Il file incollato'} non è un Excel né un PDF del report. Copia il file (non il testo o uno screenshot) e riprova.`);
     }
     const json = items.find((k) => k.type === 'json');
     if (json) { S.pending = null; return restoreBackup(json.f); }
     const xs = items.filter((k) => k.type === 'xlsx');
-    const pdfItem = items.find((k) => k.type === 'pdf');
-    if (!xs.length) throw new Error('Lo storico ora si basa sul Condensed List in Excel, perché il PDF conta meno pezzi del reale. Carica il file Condensed_List del giorno; il PDF puoi aggiungerlo insieme, solo per le taglie.');
+    if (!xs.length) throw new Error('Carica il file Excel Condensed_List del giorno. I PDF non vengono più usati.');
     const lib = await loadXlsx();
     const sheets = xs.map((k) => {
       const name = k.f.name || 'Excel incollato';
       try { return XP.parseSheet(XP.sheetRows(lib, lib.read(k.data, { type: 'array' })), name); } catch (e) { return { error: `${name}: file non leggibile.` }; }
     });
-    let pdfRes = null;
-    if (pdfItem) {
-      const plib = await loadPdfjs();
-      const pdf = await plib.getDocument({ data: pdfItem.data, isEvalSupported: false, disableFontFace: true }).promise;
-      S.pending.pages = pdf.numPages;
-      let lastDraw = 0;
-      pdfRes = await P.parseReport(pdf, plib.OPS, (pg, tot) => { S.pending.page = pg; if (Date.now() - lastDraw > 120 || pg === tot) { lastDraw = Date.now(); if (S.tab === 'rep') render(); } });
-      pdf.destroy && pdf.destroy();
-    }
-    const res = XP.combine(sheets, pdfRes);
+    const cond = sheets.find((x) => !x.error && x.kind === 'condensed');
+    if (!cond) throw new Error(sheets.find((x) => x.error) ? sheets.find((x) => x.error).error : 'Questo non è il Condensed List. Carica il file Br2086-Condensed_List, che contiene tessile, calzature e accessori.');
+    const res = XP.combine([cond], null);
+    res.meta.ignored = sheets.filter((x) => x !== cond).map((x) => x.filename || 'file');
     if (res.error) throw new Error(res.error);
     if (!res.meta.completed) throw new Error('Non trovo la data del report nella prima riga dell\'Excel (Date:…).');
     res.meta.id = `${res.meta.completed}_xlsx`.replace(/[^A-Za-z0-9_\-.~:@+]/g, '-');
@@ -1511,7 +1234,7 @@ async function handleFiles(list) {
 async function savePending() {
   const res = S.pending.res;
   const m = res.meta;
-  const meta = { id: m.id, source: 'xlsx', kind: m.kind, completed: m.completed, branch: m.branch, branchName: m.branchName, files: m.files, sizesFromPdf: m.sizesFromPdf, declaredStyles: res.checks.rows, declaredValue: res.checks.value, checks: res.checks, warnings: res.warnings.slice(0, 20) };
+  const meta = { id: m.id, source: 'xlsx', kind: m.kind, completed: m.completed, branch: m.branch, branchName: m.branchName, files: m.files, declaredStyles: res.checks.rows, declaredValue: res.checks.value, checks: res.checks, warnings: res.warnings.slice(0, 20) };
   S.pending = { stage: 'saving', pct: 5 }; render();
   try {
     await Store.save(meta, res.rows.map(E.pack), (i, n) => { S.pending.pct = Math.round(100 * i / n); render(); });
@@ -1626,7 +1349,7 @@ document.addEventListener('click', (ev) => {
   if (d.artmore !== undefined) { S.art.limit += 60; return render(); }
   if (d.togglefilters !== undefined) { S.art.showFilters = !S.art.showFilters; return render(); }
   if (d.clearfilters !== undefined) { Object.assign(S.art, { ptype: '', qmin: '', qmax: '', u7min: '', lastOld: '', loc: '', onlyNew: false }); return render(); }
-  if (d.clearmain !== undefined) { Object.assign(S.art, { dept: '', cat: '', brand: '', size: '' }); return render(); }
+  if (d.clearmain !== undefined) { Object.assign(S.art, { dept: '', cat: '', brand: '' }); return render(); }
 });
 
 let inputT = null;
@@ -1647,7 +1370,7 @@ document.addEventListener('change', (ev) => {
   if (id === 'evFrom') { S.ev.from = +v; return render(); }
   if (id === 'evTo') { S.ev.to = +v; if (S.ev.from >= S.ev.to) S.ev.from = S.ev.to - 1; return render(); }
   if (id === 'artSort') { S.art.sort = v; return render(); }
-  const selMap = { fBrand: 'brand', fDept: 'dept', fCat: 'cat', fSize: 'size', fPtype: 'ptype', fLast: 'lastOld' };
+  const selMap = { fBrand: 'brand', fDept: 'dept', fCat: 'cat', fPtype: 'ptype', fLast: 'lastOld' };
   if (selMap[id]) { S.art[selMap[id]] = v; S.art.limit = 60; return render(); }
   if (id === 'fNew') { S.art.onlyNew = v === '1'; return render(); }
   const numMap = { fQmin: 'qmin', fQmax: 'qmax', fU7: 'u7min' };
@@ -1677,7 +1400,7 @@ async function readClipboard() {
     const items = await navigator.clipboard.read();
     for (const it of items) {
       const t = it.types.find((x) => /sheet|excel/i.test(x)) || it.types.find((x) => /pdf/i.test(x)) || it.types.find((x) => /json/i.test(x));
-      if (t) { const b = await it.getType(t); const ext = /json/i.test(t) ? 'json' : /pdf/i.test(t) ? 'pdf' : 'xlsx'; return handleFile(new File([b], 'appunti.' + ext, { type: t })); }
+      if (t) { const b = await it.getType(t); const ext = /json/i.test(t) ? 'json' : /pdf/i.test(t) ? 'pdf' : 'xlsx'; return handleFiles([new File([b], 'appunti.' + ext, { type: t })]); }
     }
     toast('Negli appunti non trovo il file del report. Prova a tenere premuto il riquadro e scegliere Incolla.');
   } catch (e) {
