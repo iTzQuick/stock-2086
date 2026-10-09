@@ -85,13 +85,15 @@
   }
 
   // Stima vendite tra due snapshot (CALCOLO, non dato del report):
-  // c'è stata almeno una vendita se la data di ultima vendita è avanzata;
+  // c'è stata almeno una vendita se la data di ultima vendita è avanzata
+  // o, nello stesso giorno, se le vendite 7gg sono aumentate;
   // in quel caso la stima è il calo di stock, minimo 1.
   function estSales(p, c) {
     if (!p || !c) return null;
     const advanced = c.last && (!p.last || c.last > p.last);
-    if (!advanced) return 0;
-    return Math.max(1, p.qty - c.qty);
+    const u7up = c.u7 > p.u7;
+    if (!advanced && !u7up) return 0;
+    return Math.max(1, p.qty - c.qty, u7up && !advanced ? c.u7 - p.u7 : 0);
   }
 
   function history(model, key) {
@@ -105,11 +107,12 @@
     return out;
   }
 
-  // Righe dello snapshot i arricchite con i calcoli
-  function rowsAt(model, i) {
+  // Righe dello snapshot i arricchite con i calcoli, confrontate con lo snapshot base (default: il precedente)
+  function rowsAt(model, i, base) {
     const sn = model.snaps[i];
     if (!sn) return [];
-    const prev = i > 0 ? model.snaps[i - 1].map : null;
+    if (base == null) base = i - 1;
+    const prev = base >= 0 ? model.snaps[base].map : null;
     const first = model.snaps[0].map;
     const out = [];
     for (const r of sn.map.values()) {
@@ -138,17 +141,26 @@
     return out;
   }
 
-  function summary(model, i, opts) {
+  function seenUpTo(model, j) {
+    const seen = new Set();
+    for (let k = 0; k <= j; k++) for (const key of model.snaps[k].map.keys()) seen.add(key);
+    return seen;
+  }
+
+  function summary(model, i, opts, base) {
     const o = Object.assign({ low: 2, oldDays: 60, bigAbs: 5, bigPct: 50 }, opts || {});
-    const rows = rowsAt(model, i);
-    const ev = model.events.filter((e) => e.i === i);
+    if (base == null) base = i - 1;
+    const rows = rowsAt(model, i, base);
+    const ev = base === i - 1 ? model.events.filter((e) => e.i === i)
+      : base >= 0 ? diffPair(model.snaps[base].map, model.snaps[i].map, i, seenUpTo(model, base)) : [];
     const by = (t) => ev.filter((e) => t.includes(e.type));
     const meta = model.snaps[i].meta;
     const styles = new Set(rows.map((r) => r.style));
     const withDelta = rows.filter((r) => r.calc.dPrev);
     return {
       meta,
-      hasPrev: i > 0,
+      hasPrev: base >= 0,
+      base,
       rows,
       stock: {
         qty: rows.reduce((s, r) => s + r.qty, 0),

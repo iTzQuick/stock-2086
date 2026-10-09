@@ -304,13 +304,15 @@ main { flex: 1 1 auto; overflow-y: auto; padding-inline: 16px; padding-block: 14
   }
 
   // Stima vendite tra due snapshot (CALCOLO, non dato del report):
-  // c'è stata almeno una vendita se la data di ultima vendita è avanzata;
+  // c'è stata almeno una vendita se la data di ultima vendita è avanzata
+  // o, nello stesso giorno, se le vendite 7gg sono aumentate;
   // in quel caso la stima è il calo di stock, minimo 1.
   function estSales(p, c) {
     if (!p || !c) return null;
     const advanced = c.last && (!p.last || c.last > p.last);
-    if (!advanced) return 0;
-    return Math.max(1, p.qty - c.qty);
+    const u7up = c.u7 > p.u7;
+    if (!advanced && !u7up) return 0;
+    return Math.max(1, p.qty - c.qty, u7up && !advanced ? c.u7 - p.u7 : 0);
   }
 
   function history(model, key) {
@@ -324,11 +326,12 @@ main { flex: 1 1 auto; overflow-y: auto; padding-inline: 16px; padding-block: 14
     return out;
   }
 
-  // Righe dello snapshot i arricchite con i calcoli
-  function rowsAt(model, i) {
+  // Righe dello snapshot i arricchite con i calcoli, confrontate con lo snapshot base (default: il precedente)
+  function rowsAt(model, i, base) {
     const sn = model.snaps[i];
     if (!sn) return [];
-    const prev = i > 0 ? model.snaps[i - 1].map : null;
+    if (base == null) base = i - 1;
+    const prev = base >= 0 ? model.snaps[base].map : null;
     const first = model.snaps[0].map;
     const out = [];
     for (const r of sn.map.values()) {
@@ -357,17 +360,26 @@ main { flex: 1 1 auto; overflow-y: auto; padding-inline: 16px; padding-block: 14
     return out;
   }
 
-  function summary(model, i, opts) {
+  function seenUpTo(model, j) {
+    const seen = new Set();
+    for (let k = 0; k <= j; k++) for (const key of model.snaps[k].map.keys()) seen.add(key);
+    return seen;
+  }
+
+  function summary(model, i, opts, base) {
     const o = Object.assign({ low: 2, oldDays: 60, bigAbs: 5, bigPct: 50 }, opts || {});
-    const rows = rowsAt(model, i);
-    const ev = model.events.filter((e) => e.i === i);
+    if (base == null) base = i - 1;
+    const rows = rowsAt(model, i, base);
+    const ev = base === i - 1 ? model.events.filter((e) => e.i === i)
+      : base >= 0 ? diffPair(model.snaps[base].map, model.snaps[i].map, i, seenUpTo(model, base)) : [];
     const by = (t) => ev.filter((e) => t.includes(e.type));
     const meta = model.snaps[i].meta;
     const styles = new Set(rows.map((r) => r.style));
     const withDelta = rows.filter((r) => r.calc.dPrev);
     return {
       meta,
-      hasPrev: i > 0,
+      hasPrev: base >= 0,
+      base,
       rows,
       stock: {
         qty: rows.reduce((s, r) => s + r.qty, 0),
@@ -711,12 +723,30 @@ const S = {
   ev: { from: null, to: null, types: null, q: '', limit: 200 },
   pending: null, confirmDel: null, busy: false,
 };
+// Confronto: con il report precedente oppure con l'ultimo report del giorno prima
+let cmpMode = 'prev';
+try { cmpMode = localStorage.getItem('nod-cmp') || 'prev'; } catch (e) {}
+const dayOf = (i) => S.model.snaps[i].meta.completed.slice(0, 10);
+function prevDayIdx(i) { for (let j = i - 1; j >= 0; j--) if (dayOf(j) < dayOf(i)) return j; return -1; }
+function baseFor(i) {
+  if (i <= 0) return -1;
+  if (cmpMode === 'day') { const j = prevDayIdx(i); return j >= 0 ? j : i - 1; }
+  return i - 1;
+}
+const sameDayPrev = (i) => i > 0 && dayOf(i - 1) === dayOf(i) && prevDayIdx(i) >= 0;
+function cmpLabel(i) {
+  if (i == null) i = S.idx;
+  const b = baseFor(i);
+  if (b < 0) return '';
+  const m = S.model.snaps[b].meta.completed;
+  return dayOf(b) === dayOf(i) ? `dalle ${m.slice(11, 16)}` : `dal ${fD(m)} ${m.slice(11, 16)}`;
+}
 let sumCache = { k: null, v: {} };
 function summ(i) {
   if (i == null) i = S.idx;
-  const k = `${S.branch}|${S.model.snaps.length}|${JSON.stringify(settings)}`;
+  const k = `${S.branch}|${S.model.snaps.length}|${cmpMode}|${JSON.stringify(settings)}`;
   if (sumCache.k !== k) sumCache = { k, v: {} };
-  if (!sumCache.v[i]) sumCache.v[i] = E.summary(S.model, i, settings);
+  if (!sumCache.v[i]) sumCache.v[i] = E.summary(S.model, i, settings, baseFor(i));
   return sumCache.v[i];
 }
 
@@ -825,19 +855,21 @@ function emptyState() {
 function renderDash() {
   if (!S.model) return emptyState();
   const s = summ();
-  const prev = S.idx > 0 ? S.model.snaps[S.idx - 1].meta : null;
-  const prevSum = prev ? summ(S.idx - 1) : null;
+  const bIdx = baseFor(S.idx);
+  const prev = bIdx >= 0 ? S.model.snaps[bIdx].meta : null;
+  const prevSum = prev ? summ(bIdx) : null;
   const dQty = prevSum ? s.stock.qty - prevSum.stock.qty : null;
   const dVal = prevSum ? Math.round((s.stock.value - prevSum.stock.value) * 100) / 100 : null;
   const kpi = (label, val, sub, calc, tag) => `<div class="kpi${calc ? ' c' : ''}"><div class="k"><span>${label}</span>${tag}</div><div class="v">${val}</div><div class="s">${sub || ''}</div></div>`;
   let h = `<div class="view">
-  <div class="lede"><h1>${S.idx === 0 ? 'Giorno 1' : 'Report del ' + fD(s.meta.completed)}</h1><p>${esc(s.meta.branchName || '')} · ${esc(fSnap(s.meta))}${prev ? ` · confronto con ${fD(prev.completed)}` : ' · base dello storico'}</p></div>
+  <div class="lede"><h1>${S.idx === 0 ? 'Giorno 1' : 'Report del ' + fD(s.meta.completed) + ' · ' + s.meta.completed.slice(11, 16)}</h1><p>${esc(s.meta.branchName || '')}${prev ? ` · confronto con ${esc(fSnap(prev))}` : ' · base dello storico'}</p></div>
+  ${sameDayPrev(S.idx) ? `<div class="chips" role="group" aria-label="Confronta con" style="padding:0"><span class="chip" style="border:0;background:none;padding-inline:0;font-weight:600">Confronta con</span><button class="chip" data-cmp="prev" aria-pressed="${cmpMode === 'prev'}">Report delle ${esc(S.model.snaps[S.idx - 1].meta.completed.slice(11, 16))}</button><button class="chip" data-cmp="day" aria-pressed="${cmpMode === 'day'}">Ultimo di ieri</button></div>` : ''}
   <div class="legend">${tagR} letto dal report ${tagC} ricavato confrontando i report</div>
   <div class="kpis">
-    ${kpi('Stock totale', fN(s.stock.qty), dQty != null ? `${dp(dQty)} da ieri` : 'pezzi', false, tagR)}
+    ${kpi('Stock totale', fN(s.stock.qty), dQty != null ? `${dp(dQty)} ${esc(cmpLabel())}` : 'pezzi', false, tagR)}
     ${kpi('Valore stock', ef0.format(s.stock.value), dVal != null ? `${dp(dVal, true)}` : 'qty × prezzo vendita', false, tagR)}
     ${kpi('Style in stock', fN(s.stock.styles), `${fN(s.stock.rows)} righe`, false, tagR)}
-    ${kpi('Usciti dal report', prev ? fN(s.stock.out.length) : '—', prev ? 'rispetto al report precedente' : 'dal secondo report', true, tagC)}
+    ${kpi('Usciti dal report', prev ? fN(s.stock.out.length) : '—', prev ? esc(cmpLabel()) : 'dal secondo report', true, tagC)}
     ${kpi('Stock basso', fN(s.stock.low.length), `≤ ${settings.low} pz`, false, tagR)}
     ${kpi('Vendite 7gg', fN(s.sales.u7), 'pezzi, finestra mobile', false, tagR)}
     ${kpi('Valore vendite 7gg', ef0.format(s.sales.v7), 'incassato, finestra mobile', false, tagR)}
@@ -991,7 +1023,7 @@ function artBody() {
   </div>
   <header style="padding-top:0"><button class="btn ghost" data-togglefilters style="padding-inline:0;border:0">Altri filtri${active ? ` (${active})` : ''} ${a.showFilters ? '▴' : '▾'}</button>
     <select id="artSort" aria-label="Ordina" style="background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-size:13px">
-      ${o('qty', 'Stock ↓', a.sort)}${o('qtyAsc', 'Stock ↑', a.sort)}${o('u7', 'Vendite 7gg ↓', a.sort)}${o('last', 'Vendita più recente', a.sort)}${o('lastOld', 'Vendita più vecchia', a.sort)}${o('dPrev', 'Calo da ieri', a.sort)}${o('value', 'Valore stock ↓', a.sort)}${o('style', 'Style Code A-Z', a.sort)}
+      ${o('qty', 'Stock ↓', a.sort)}${o('qtyAsc', 'Stock ↑', a.sort)}${o('u7', 'Vendite 7gg ↓', a.sort)}${o('last', 'Vendita più recente', a.sort)}${o('lastOld', 'Vendita più vecchia', a.sort)}${o('dPrev', 'Calo dal confronto', a.sort)}${o('value', 'Valore stock ↓', a.sort)}${o('style', 'Style Code A-Z', a.sort)}
     </select></header>`;
   if (a.showFilters) {
     h += `<div class="filters">
@@ -1021,7 +1053,7 @@ function compareTable(rs) {
   const lines = [
     ['Brand', (r) => esc(r.brand)], ['Categoria', (r) => esc(r.gender)], ['Descrizione', (r) => esc(r.desc)],
     ['Stock', (r) => `<b>${fN(r.qty)}</b>`],
-    ['Δ da ieri', (r) => hasPrev ? (r.calc.dPrev == null ? 'nuovo' : dp(r.calc.dPrev) || '0') : '—', 1],
+    [`Δ ${cmpLabel() || 'dal precedente'}`, (r) => hasPrev ? (r.calc.dPrev == null ? 'nuovo' : dp(r.calc.dPrev) || '0') : '—', 1],
     ['Stock iniziale', (r) => `${fN(r.calc.firstQty)}${r.calc.fromDay1 ? '' : ' (dal ' + fD(S.model.snaps[r.calc.firstIdx].meta.completed) + ')'}`, 1],
     ['Δ da inizio', (r) => dp(r.calc.dFirst) || '0', 1],
     ['Prezzo vendita', (r) => fE(r.sell)], ['RRP', (r) => r.rrp ? fE(r.rrp) : '—'], ['Price Type', (r) => pt(r.ptype)],
@@ -1031,7 +1063,7 @@ function compareTable(rs) {
     ['Ubicazione', (r) => r.loc ? `<span class="mono">${esc(r.loc)}</span>` : '—'],
   ];
   return `<div class="card"><div class="cmpwrap" style="border:0"><table class="cmp"><thead><tr><th scope="col"></th>${rs.map((r) => `<th scope="col"><button class="code" data-open="${esc(r.key)}" style="background:none;border:0;padding:0;text-decoration:underline">${esc(r.style)}</button></th>`).join('')}</tr></thead><tbody>${lines.map((l) => `<tr${l[2] ? ' class="c"' : ''}><th scope="row">${l[0]}</th>${rs.map((r) => `<td>${l[1](r)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
-  <p class="note">Le righe marcate ·calc sono calcolate dall'app confrontando i report. La stima vendite conta i giorni in cui la data di ultima vendita è avanzata.</p></div>`;
+  <p class="note">Le righe marcate ·calc sono calcolate dall'app confrontando i report. La stima vendite conta i movimenti in cui la data di ultima vendita avanza o le vendite 7gg aumentano.</p></div>`;
 }
 
 /* ---------- scheda articolo ---------- */
@@ -1080,16 +1112,16 @@ function openItem(key) {
     </div><p class="note">Vendite 7gg è un totale mobile degli ultimi 7 giorni, non le vendite di oggi.</p></section>
     <section class="card"><header><h2>Calcoli</h2>${tagC}</header><div class="grid c">
       ${g('Stock iniziale', fN(r.calc.firstQty) + (r.calc.fromDay1 ? ' (Giorno 1)' : ' (dal ' + fD(S.model.snaps[r.calc.firstIdx].meta.completed) + ')'))}
-      ${g('Δ da ieri', S.idx > 0 ? (r.calc.dPrev == null ? 'nuovo oggi' : dp(r.calc.dPrev) || '0') : '—')}
+      ${g(`Δ ${esc(cmpLabel() || 'dal precedente')}`, S.idx > 0 ? (r.calc.dPrev == null ? 'nuovo' : dp(r.calc.dPrev) || '0') : '—')}
       ${g('Δ da inizio', dp(r.calc.dFirst) || '0')}
       ${g('Valore in stock', fE(r.calc.stockValue))}${g('Sconto su RRP', discTxt(r.calc.discount))}
       ${g('Giorni da ultima vendita', r.calc.daysSinceSale ?? '—')}
       ${g('Stima vendite nel periodo', r.calc.estSales == null ? 'dal 2° report' : fN(r.calc.estSales))}
-    </div><p class="note">Un calo di stock non è per forza una vendita: può essere un trasferimento o un altro movimento. La stima vendite considera solo i giorni in cui la data di ultima vendita è avanzata.</p></section>`;
+    </div><p class="note">Un calo di stock non è per forza una vendita: può essere un trasferimento o un altro movimento. La stima vendite conta solo i passaggi tra report in cui la data di ultima vendita avanza o le vendite 7gg aumentano.</p></section>`;
   }
   h += `<section class="card"><header><h2>Andamento</h2>${tagC}</header><div class="spark">${sparkline(hist)}</div>
     <div style="overflow-x:auto"><table class="hist"><thead><tr><th>Report</th><th>Qty</th><th>Δ</th><th>Prezzo</th><th>Type</th><th>7gg</th><th>Stima</th></tr></thead><tbody>
-    ${hist.slice().reverse().map((x) => x.row ? `<tr><td>${fD(x.meta.completed)}</td><td><b>${fN(x.row.qty)}</b></td><td>${x.delta == null ? '' : dp(x.delta) || '0'}</td><td>${fE(x.row.sell)}</td><td>${pt(x.row.ptype)}</td><td>${fN(x.row.u7)}</td><td>${x.est == null ? '' : x.est}</td></tr>` : `<tr><td>${fD(x.meta.completed)}</td><td colspan="6" class="absent">non presente nel report</td></tr>`).join('')}
+    ${hist.slice().reverse().map((x) => x.row ? `<tr><td>${fD(x.meta.completed)} ${x.meta.completed.slice(11, 16)}</td><td><b>${fN(x.row.qty)}</b></td><td>${x.delta == null ? '' : dp(x.delta) || '0'}</td><td>${fE(x.row.sell)}</td><td>${pt(x.row.ptype)}</td><td>${fN(x.row.u7)}</td><td>${x.est == null ? '' : x.est}</td></tr>` : `<tr><td>${fD(x.meta.completed)} ${x.meta.completed.slice(11, 16)}</td><td colspan="6" class="absent">non presente nel report</td></tr>`).join('')}
     </tbody></table></div></section>`;
   const evs = (S.model.eventsByKey.get(key) || []).slice().sort((a, b) => b.i - a.i);
   h += `<section class="card"><header><h2>Variazioni registrate</h2>${tagC}</header><div class="list">`;
@@ -1108,7 +1140,7 @@ function openItem(key) {
 
 /* ---------- vista: Report ---------- */
 function renderRep() {
-  let h = `<div class="view"><div class="lede"><h1>Report</h1><p>Un report al giorno. I precedenti non vengono mai sovrascritti.</p></div>`;
+  let h = `<div class="view"><div class="lede"><h1>Report</h1><p>Carica il Condensed List ogni volta che vuoi controllare, anche più volte al giorno. Ogni report si confronta con i precedenti, che non vengono mai sovrascritti.</p></div>`;
   h += `<section class="card"><header><h2>Nuovo report</h2></header><div class="import">`;
   const p = S.pending;
   if (!p) {
@@ -1131,10 +1163,10 @@ function renderRep() {
       ${m.ignored.length ? `<span class="note" style="padding:0">Ho usato il Condensed List e ignorato: ${esc(m.ignored.join(', '))}</span>` : ''}
     </div>`;
     if (r.warnings.length) h += `<div class="infobox">${r.warnings.slice(0, 5).map(esc).join('<br>')}${r.warnings.length > 5 ? `<br>…e altri ${r.warnings.length - 5}` : ''}</div>`;
-    if (p.dup) h += `<div class="warnbox">Per il ${fD(m.completed)} c'è già un report nello storico (ore ${esc(p.dup.completed.slice(11, 16))}). Ne tengo uno al giorno: per sostituirlo, eliminalo dalla lista qui sotto e ricarica il file.</div><button class="btn" data-cancel>Chiudi</button>`;
+    if (p.dup) h += `<div class="warnbox">Questo report (${fD(m.completed)} ore ${esc(m.completed.slice(11, 16))}) è già nello storico. Non lo salvo una seconda volta.</div><button class="btn" data-cancel>Chiudi</button>`;
     else {
       if (!c.complete) h += `<div class="warnbox">In questo file manca una parte del negozio: salvandolo, gli articoli mancanti risulterebbero usciti dal report.</div>`;
-      if (p.same) h += `<div class="infobox">I dati sono identici al report precedente: probabilmente il sistema non li ha ancora aggiornati. Salvarlo non aggiunge informazioni.</div>`;
+      if (p.same) h += `<div class="infobox">I dati sono identici all'ultimo report salvato: nel frattempo non è cambiato nulla. Salvarlo non aggiunge informazioni.</div>`;
       const ok = c.complete && !p.same;
       h += `<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" data-save>${ok ? 'Salva nello storico' : 'Salva comunque'}</button><button class="btn" data-cancel>Annulla</button></div>`;
     }
@@ -1167,6 +1199,7 @@ function renderRep() {
     <div>TK = promo · NT = variazione di prezzo non promo, anche in aumento sopra l'RRP · FULL = prezzo pieno.</div>
     <div>Il report elenca solo articoli con stock: chi esce dal report può essere esaurito, trasferito o esposto.</div>
     <div>Un articolo con due linee prezzo nello stesso reparto è mostrato come una riga sola, con i pezzi sommati.</div>
+    <div>Con più report nello stesso giorno, nella scheda Oggi puoi confrontare con il report precedente o con l'ultimo di ieri. La stima vendite conta un movimento quando la data di ultima vendita avanza o le vendite 7gg aumentano.</div>
   </div></section>`;
   return h + '</div>';
 }
@@ -1217,8 +1250,7 @@ async function handleFiles(list) {
     if (res.error) throw new Error(res.error);
     if (!res.meta.completed) throw new Error('Non trovo la data del report nella prima riga dell\'Excel (Date:…).');
     res.meta.id = `${res.meta.completed}_xlsx`.replace(/[^A-Za-z0-9_\-.~:@+]/g, '-');
-    const day = res.meta.completed.slice(0, 10);
-    const dup = S.metas.find((m) => m.source === 'xlsx' && m.branch === res.meta.branch && m.completed.slice(0, 10) === day) || null;
+    const dup = S.metas.find((m) => m.id === res.meta.id) || null;
     let same = false;
     const last = S.model && S.model.snaps.length ? S.model.snaps[S.model.snaps.length - 1] : null;
     if (last && !dup && last.meta.branch === res.meta.branch) {
@@ -1324,6 +1356,7 @@ document.addEventListener('click', (ev) => {
   if (d.tab) return setTab(d.tab);
   if (d.open) return openItem(d.open);
   if (d.dash) { const [s, l] = d.dash.split(':'); S.dashSel[s] = l; return render(); }
+  if (d.cmp) { cmpMode = d.cmp; try { localStorage.setItem('nod-cmp', cmpMode); } catch (e) {} return render(); }
   if (d.all) { const [s, l] = d.all.split(':'); return openAll(s, l); }
   if (d.sheetmore !== undefined) return sheetMore && sheetMore();
   if (d.clip !== undefined) return readClipboard();

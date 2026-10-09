@@ -1,5 +1,5 @@
 // Copia l'app nel telefono per farla funzionare anche offline.
-const VERSION = 'stock-v7';
+const VERSION = 'stock-v8';
 const FILES = [
   './', 'index.html', 'manifest.webmanifest', 'lib/xlsx.full.min.js',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/maskable-512.png', 'icons/apple-touch-icon.png',
