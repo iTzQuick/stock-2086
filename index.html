@@ -1,0 +1,1386 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#F2C230">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Stock 2086">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<title>Stock 2086 Turin</title>
+<style>
+@font-face { font-family: "Barlow Condensed"; font-weight: 600; font-display: swap; src: url(fonts/barlow-condensed-latin-600-normal.woff2) format("woff2"); }
+@font-face { font-family: "Barlow Condensed"; font-weight: 700; font-display: swap; src: url(fonts/barlow-condensed-latin-700-normal.woff2) format("woff2"); }
+@font-face { font-family: "IBM Plex Sans"; font-weight: 400; font-display: swap; src: url(fonts/ibm-plex-sans-latin-400-normal.woff2) format("woff2"); }
+@font-face { font-family: "IBM Plex Sans"; font-weight: 500; font-display: swap; src: url(fonts/ibm-plex-sans-latin-500-normal.woff2) format("woff2"); }
+@font-face { font-family: "IBM Plex Sans"; font-weight: 600; font-display: swap; src: url(fonts/ibm-plex-sans-latin-600-normal.woff2) format("woff2"); }
+@font-face { font-family: "IBM Plex Mono"; font-weight: 400; font-display: swap; src: url(fonts/ibm-plex-mono-latin-400-normal.woff2) format("woff2"); }
+@font-face { font-family: "IBM Plex Mono"; font-weight: 500; font-display: swap; src: url(fonts/ibm-plex-mono-latin-500-normal.woff2) format("woff2"); }
+*, *::before, *::after { box-sizing: border-box; }
+:root { color-scheme: light; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body { margin: 0; }
+[hidden] { display: none !important; }
+img { max-width: 100%; }
+
+/* Layout: app a schermo intero per telefono — barra in alto con il report scelto, contenuto scorrevole, schede in basso.
+   Convenzione: bordo pieno = dato del report, bordo tratteggiato = calcolo dell'app. */
+:root {
+  --bg: #E8ECEB; --surface: #F8FAF9; --sunk: #DDE3E1; --line: #C9D2CF; --ink: #10191C; --muted: #566562;
+  --label: #F2C230; --label-ink: #1B1503;
+  --calc: #4650C4; --up: #127249; --down: #B9372A; --tk: #A12F78; --nt: #0B7480;
+  --f-display: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --r: 10px;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0D1315; --surface: #151E21; --sunk: #0A0F11; --line: #27353A; --ink: #E4ECEA; --muted: #8C9C99;
+  --label: #F2C230; --label-ink: #1B1503;
+  --calc: #929AFF; --up: #4DC38B; --down: #FF7B6A; --tk: #E57BC2; --nt: #4FC3CD; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0D1315; --surface: #151E21; --sunk: #0A0F11; --line: #27353A; --ink: #E4ECEA; --muted: #8C9C99;
+  --label: #F2C230; --label-ink: #1B1503;
+  --calc: #929AFF; --up: #4DC38B; --down: #FF7B6A; --tk: #E57BC2; --nt: #4FC3CD; color-scheme: dark }
+
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 14px; line-height: 1.4; -webkit-tap-highlight-color: transparent; }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--calc); outline-offset: 2px; }
+.mono { font-family: var(--f-mono); }
+.num { font-variant-numeric: tabular-nums; }
+
+.app { display: flex; flex-direction: column; height: 100%; }
+.top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); border-bottom: 1px solid var(--line); padding-block: 10px; padding-inline: 16px; display: flex; align-items: center; gap: 10px; }
+.brandmark { display: flex; align-items: baseline; gap: 6px; flex: 0 0 auto; }
+.brandmark b { font-family: var(--f-display); font-size: 22px; letter-spacing: .02em; line-height: 1; }
+.brandmark span { font-family: var(--f-mono); font-size: 11px; background: var(--label); color: var(--label-ink); padding: 2px 5px; border-radius: 3px; }
+.top select { flex: 1 1 auto; min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 7px 8px; font-size: 13px; }
+main { flex: 1 1 auto; overflow-y: auto; padding-inline: 16px; padding-block: 14px calc(84px + env(safe-area-inset-bottom, 0px)); }
+.view { display: flex; flex-direction: column; gap: 14px; max-width: 760px; margin-inline: auto; }
+
+.tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; background: var(--surface); border-top: 1px solid var(--line); display: grid; grid-template-columns: repeat(4, 1fr); padding-bottom: env(safe-area-inset-bottom, 0px); }
+.tabs button { background: none; border: 0; padding: 9px 4px 10px; display: flex; flex-direction: column; align-items: center; gap: 3px; color: var(--muted); font-size: 11.5px; font-weight: 500; }
+.tabs button svg { width: 22px; height: 22px; }
+.tabs button[aria-current="page"] { color: var(--ink); }
+.tabs button[aria-current="page"] .ic { background: var(--label); color: var(--label-ink); }
+.tabs .ic { display: grid; place-items: center; width: 44px; height: 26px; border-radius: 13px; }
+
+.lede { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.lede h1 { font-family: var(--f-display); font-size: 30px; line-height: 1; margin: 0; letter-spacing: .01em; text-wrap: balance; }
+.lede p { margin: 0; color: var(--muted); font-size: 13px; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 8px; font-size: 12px; color: var(--muted); align-items: center; }
+.tag { display: inline-flex; align-items: center; font-family: var(--f-mono); font-size: 9.5px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; padding: 1px 5px; border-radius: 3px; line-height: 1.5; white-space: nowrap; }
+.tag.rep { border: 1px solid var(--ink); color: var(--ink); }
+.tag.calc { border: 1px dashed var(--calc); color: var(--calc); }
+
+.kpis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+@media (min-width: 620px) { .kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.kpi { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 10px 11px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.kpi.c { border-style: dashed; border-color: var(--calc); }
+.kpi .k { display: flex; justify-content: space-between; gap: 6px; font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.kpi .v { font-family: var(--f-display); font-size: 27px; line-height: 1.05; font-variant-numeric: tabular-nums; }
+.kpi .s { font-size: 12px; color: var(--muted); min-height: 1.4em; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
+.card > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 12px 6px; }
+.card h2 { font-family: var(--f-display); font-size: 21px; margin: 0; letter-spacing: .02em; text-transform: uppercase; }
+.chips { display: flex; gap: 6px; overflow-x: auto; padding: 4px 12px 10px; scrollbar-width: none; }
+.chips::-webkit-scrollbar { display: none; }
+.chip { flex: 0 0 auto; border: 1px solid var(--line); background: var(--bg); border-radius: 999px; padding: 5px 10px; font-size: 12.5px; white-space: nowrap; display: inline-flex; gap: 6px; align-items: center; }
+.chip[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.chip .n { font-family: var(--f-mono); font-size: 11px; opacity: .75; }
+
+.list { display: flex; flex-direction: column; }
+.ri { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; text-align: left; width: 100%; background: none; border: 0; border-top: 1px solid var(--line); padding: 9px 12px; }
+.ri:active { background: var(--sunk); }
+.ri-main { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
+.code { font-family: var(--f-mono); font-size: 13px; font-weight: 500; word-break: break-all; }
+.ri-sub { font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ri-right { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; font-variant-numeric: tabular-nums; }
+.ri-right .big { font-family: var(--f-display); font-size: 21px; line-height: 1; }
+.ri-right .small { font-size: 11.5px; color: var(--muted); white-space: nowrap; }
+.more { width: 100%; background: none; border: 0; border-top: 1px solid var(--line); padding: 11px 12px; font-weight: 600; font-size: 13px; text-align: left; color: var(--ink); display: flex; justify-content: space-between; }
+.empty { padding: 14px 12px; color: var(--muted); font-size: 13px; border-top: 1px solid var(--line); }
+
+.dp { display: inline-flex; align-items: center; border: 1px dashed currentColor; border-radius: 4px; padding: 0 5px; font-family: var(--f-mono); font-size: 12px; line-height: 1.5; white-space: nowrap; }
+.dp.up { color: var(--up); } .dp.down { color: var(--down); } .dp.zero { color: var(--muted); }
+.pt { font-family: var(--f-mono); font-size: 10.5px; font-weight: 500; padding: 1px 5px; border-radius: 3px; border: 1px solid currentColor; }
+.pt.FULL { color: var(--muted); } .pt.TK { color: var(--tk); } .pt.NT { color: var(--nt); }
+.arrow { font-family: var(--f-mono); font-size: 12.5px; white-space: nowrap; }
+
+.field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.field label { font-size: 12px; color: var(--muted); }
+.field input, .field select { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; width: 100%; min-width: 0; }
+.search { position: relative; }
+.search input { width: 100%; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 12px 12px 12px 38px; font-size: 15px; font-family: var(--f-mono); }
+.search svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 18px; height: 18px; color: var(--muted); }
+.row2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.filters { padding: 4px 12px 12px; display: flex; flex-direction: column; gap: 10px; }
+.toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: space-between; font-size: 13px; color: var(--muted); }
+.btn { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 9px 12px; font-weight: 600; font-size: 13.5px; }
+.btn.primary { background: var(--label); color: var(--label-ink); border-color: var(--label); }
+.btn.danger { color: var(--down); border-color: var(--down); background: none; }
+.btn.ghost { background: none; }
+.btn:disabled { opacity: .5; }
+
+.cmpwrap { overflow-x: auto; border-top: 1px solid var(--line); }
+.cmp { border-collapse: collapse; font-size: 12.5px; min-width: 100%; }
+.cmp th, .cmp td { padding: 7px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.cmp th[scope="row"] { color: var(--muted); font-weight: 500; white-space: nowrap; position: sticky; left: 0; background: var(--surface); }
+.cmp td { font-variant-numeric: tabular-nums; min-width: 120px; }
+.cmp thead th { font-family: var(--f-mono); font-size: 13px; }
+.cmp tr.c th[scope="row"]::after { content: " ·calc"; color: var(--calc); font-family: var(--f-mono); font-size: 10px; }
+
+.sheet { position: fixed; inset: 0; z-index: 10; background: var(--bg); display: flex; flex-direction: column; }
+.sheet-top { display: flex; align-items: center; gap: 8px; padding-inline: 8px 16px; padding-block: calc(8px + env(safe-area-inset-top, 0px)) 8px; border-bottom: 1px solid var(--line); background: var(--bg); }
+.sheet-top .back { background: none; border: 0; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 20px; }
+.sheet-top h2 { margin: 0; font-family: var(--f-display); font-size: 20px; text-transform: uppercase; letter-spacing: .02em; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sheet-body { flex: 1 1 auto; overflow-y: auto; padding-inline: 16px; padding-block: 14px calc(24px + env(safe-area-inset-bottom, 0px)); }
+
+.hero-code { font-family: var(--f-display); font-size: 40px; line-height: 1; letter-spacing: .01em; word-break: break-all; }
+.ticket { background: var(--label); color: var(--label-ink); border-radius: var(--r); padding: 14px; display: flex; flex-direction: column; gap: 6px; }
+.ticket .meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 13px; }
+.ticket .bc { font-family: var(--f-mono); font-size: 12px; opacity: .8; }
+.ticket .pt { color: var(--label-ink); }
+.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: var(--line); border-top: 1px solid var(--line); }
+@media (min-width: 560px) { .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.grid > div { background: var(--surface); padding: 9px 12px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.grid .l { font-size: 11.5px; color: var(--muted); }
+.grid .v { font-variant-numeric: tabular-nums; font-weight: 600; font-size: 15px; word-break: break-word; }
+.grid.c .v { color: var(--calc); }
+.note { font-size: 12px; color: var(--muted); padding: 8px 12px 12px; margin: 0; }
+.spark { padding: 6px 12px 12px; }
+.spark svg { width: 100%; height: auto; display: block; }
+.hist { width: 100%; border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.hist th, .hist td { padding: 7px 8px; border-top: 1px solid var(--line); text-align: right; white-space: nowrap; }
+.hist th:first-child, .hist td:first-child { text-align: left; padding-left: 12px; }
+.hist thead th { color: var(--muted); font-weight: 500; font-size: 11.5px; }
+.hist .absent { color: var(--muted); font-style: italic; }
+
+.dayhead { position: sticky; top: 0; background: var(--sunk); padding: 6px 12px; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; border-top: 1px solid var(--line); }
+.ev-type { font-size: 11.5px; color: var(--muted); }
+
+.import { padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.bar { height: 6px; background: var(--sunk); border-radius: 3px; overflow: hidden; }
+.bar i { display: block; height: 100%; width: 0; background: var(--label); transition: width .2s; }
+.checks { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.ok { color: var(--up); font-weight: 600; } .ko { color: var(--down); font-weight: 600; }
+.warnbox { border: 1px solid var(--down); color: var(--down); border-radius: 8px; padding: 9px 10px; font-size: 13px; }
+.infobox { border: 1px dashed var(--line); border-radius: 8px; padding: 9px 10px; font-size: 13px; color: var(--muted); }
+.snap { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 10px 12px; border-top: 1px solid var(--line); }
+.snap b { font-weight: 600; }
+.snap .sub { font-size: 12px; color: var(--muted); }
+.snap .acts { display: flex; gap: 6px; }
+.status { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); }
+.dot { width: 8px; height: 8px; border-radius: 4px; background: var(--muted); flex: 0 0 auto; }
+.dot.on { background: var(--up); } .dot.warn { background: var(--down); }
+.toast { position: fixed; left: 16px; right: 16px; bottom: calc(80px + env(safe-area-inset-bottom, 0px)); z-index: 20; background: var(--ink); color: var(--bg); border-radius: var(--r); padding: 11px 14px; font-size: 13.5px; max-width: 520px; margin-inline: auto; }
+.loading { padding: 40px 0; text-align: center; color: var(--muted); display: flex; flex-direction: column; gap: 12px; align-items: center; }
+.loading .bar { width: 200px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="top">
+    <div class="brandmark"><b>STOCK</b><span id="branchTag">—</span></div>
+    <select id="snapSel" aria-label="Report da visualizzare"></select>
+    <select id="branchSel" aria-label="Negozio" hidden></select>
+  </div>
+  <main id="main"><div class="loading" id="boot"><div class="bar"><i id="bootBar" style="width:15%"></i></div><span id="bootMsg">Apro lo storico…</span></div></main>
+  <nav class="tabs" aria-label="Sezioni">
+    <button data-tab="dash" aria-current="page"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg></span>Oggi</button>
+    <button data-tab="var"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 4v16M7 20l-3-3M7 20l3-3M17 20V4M17 4l-3 3M17 4l3 3"/></svg></span>Variazioni</button>
+    <button data-tab="art"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6v12M7 6v12M10 6v12M13 6v12M17 6v12M20 6v12"/></svg></span>Articoli</button>
+    <button data-tab="rep"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M12 11v6M9 14l3-3 3 3"/></svg></span>Report</button>
+  </nav>
+</div>
+<section class="sheet" id="sheet" hidden aria-modal="true" role="dialog">
+  <div class="sheet-top"><button class="back" id="sheetBack" aria-label="Indietro"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 5l-7 7 7 7"/></svg></button><h2 id="sheetTitle"></h2></div>
+  <div class="sheet-body" id="sheetBody"></div>
+</section>
+<input type="file" id="fileIn" accept="application/pdf,.pdf,application/json,.json" hidden>
+<div class="toast" id="toast" hidden role="status"></div>
+
+<script>
+// Parser del report "Not on Display" (Oracle BI Publisher).
+// Ricostruisce la griglia dalle linee della tabella e assegna ogni testo alla sua cella.
+(function (root) {
+  const MONTHS = { Jan: 1, Feb: 2, Mar: 3, Apr: 4, May: 5, Jun: 6, Jul: 7, Aug: 8, Sep: 9, Oct: 10, Nov: 11, Dec: 12 };
+  const pad = (n) => String(n).padStart(2, '0');
+
+  function mul(m1, m2) {
+    return [
+      m1[0] * m2[0] + m1[2] * m2[1], m1[1] * m2[0] + m1[3] * m2[1],
+      m1[0] * m2[2] + m1[2] * m2[3], m1[1] * m2[2] + m1[3] * m2[3],
+      m1[0] * m2[4] + m1[2] * m2[5] + m1[4], m1[1] * m2[4] + m1[3] * m2[5] + m1[5],
+    ];
+  }
+  const ap = (m, x, y) => [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
+
+  // Estrae segmenti orizzontali/verticali (rettangoli sottili e linee) in coordinate top-down
+  async function getSegments(page, OPS, H) {
+    const ol = await page.getOperatorList();
+    let ctm = [1, 0, 0, 1, 0, 0];
+    const stack = [];
+    const hs = [], vs = [];
+    const addBox = (x0, y0, x1, y1) => {
+      const l = Math.min(x0, x1), r = Math.max(x0, x1);
+      const t = H - Math.max(y0, y1), b = H - Math.min(y0, y1);
+      const w = r - l, h = b - t;
+      if (h < 2.5 && w > 5) hs.push({ y: (t + b) / 2, x0: l, x1: r });
+      else if (w < 2.5 && h > 5) vs.push({ x: (l + r) / 2, top: t, bottom: b });
+    };
+    for (let i = 0; i < ol.fnArray.length; i++) {
+      const fn = ol.fnArray[i], args = ol.argsArray[i];
+      if (fn === OPS.save) stack.push(ctm.slice());
+      else if (fn === OPS.restore) ctm = stack.pop() || [1, 0, 0, 1, 0, 0];
+      else if (fn === OPS.transform) ctm = mul(ctm, args);
+      else if (fn === OPS.constructPath) {
+        const ops = args[0], co = args[1];
+        let k = 0, cur = null;
+        for (const op of ops) {
+          if (op === OPS.rectangle) {
+            const [x, y, w, h] = co.slice(k, k + 4); k += 4;
+            const p1 = ap(ctm, x, y), p2 = ap(ctm, x + w, y + h);
+            addBox(p1[0], p1[1], p2[0], p2[1]);
+          } else if (op === OPS.moveTo) { cur = ap(ctm, co[k], co[k + 1]); k += 2; }
+          else if (op === OPS.lineTo) {
+            const p = ap(ctm, co[k], co[k + 1]); k += 2;
+            if (cur) {
+              if (Math.abs(p[1] - cur[1]) < 0.5) addBox(cur[0], cur[1] - 0.5, p[0], cur[1] + 0.5);
+              else if (Math.abs(p[0] - cur[0]) < 0.5) addBox(cur[0] - 0.5, cur[1], cur[0] + 0.5, p[1]);
+            }
+            cur = p;
+          } else if (op === OPS.curveTo) k += 6;
+          else if (op === OPS.curveTo2 || op === OPS.curveTo3) k += 4;
+        }
+      }
+    }
+    return { hs, vs };
+  }
+
+  function uniq(vals, tol) {
+    vals.sort((a, b) => a - b);
+    const out = [];
+    for (const v of vals) if (!out.length || v - out[out.length - 1] > tol) out.push(v);
+    return out;
+  }
+
+  function buildTables(hs, vs) {
+    const groups = new Map();
+    for (const v of vs) {
+      const key = Math.round(v.top) + ':' + Math.round(v.bottom);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(v);
+    }
+    const tables = [];
+    for (const g of groups.values()) {
+      const xs = uniq(g.map((v) => v.x), 2);
+      if (xs.length < 3) continue;
+      const top = Math.min(...g.map((v) => v.top)), bottom = Math.max(...g.map((v) => v.bottom));
+      const ys = uniq(hs.filter((h) => h.y > top - 2 && h.y < bottom + 2 && h.x1 > xs[0] + 5 && h.x0 < xs[xs.length - 1] - 5).map((h) => h.y), 2);
+      if (ys.length < 2) continue;
+      tables.push({ xs, ys, top });
+    }
+    tables.sort((a, b) => a.top - b.top);
+    return tables;
+  }
+
+  function locate(arr, v) {
+    for (let i = 0; i < arr.length - 1; i++) if (v >= arr[i] && v < arr[i + 1]) return i;
+    return -1;
+  }
+
+  function cellLines(items) {
+    items.sort((a, b) => a.cy - b.cy || a.x - b.x);
+    const lines = [];
+    for (const it of items) {
+      const L = lines.find((l) => Math.abs(l.cy - it.cy) < it.fs * 0.5);
+      if (L) L.items.push(it); else lines.push({ cy: it.cy, items: [it] });
+    }
+    lines.sort((a, b) => a.cy - b.cy);
+    return lines.map((l) => {
+      l.items.sort((a, b) => a.x - b.x);
+      let s = '', end = null;
+      for (const it of l.items) {
+        if (end !== null && it.x - end > it.fs * 0.15 && !s.endsWith(' ') && !it.str.startsWith(' ')) s += ' ';
+        s += it.str; end = it.x + it.w;
+      }
+      return { text: s.replace(/\s+/g, ' ').trim(), left: l.items[0].x, right: end };
+    }).filter((l) => l.text);
+  }
+
+  async function parsePages(pdf, OPS, onProgress) {
+    const grids = [];
+    for (let p = 1; p <= pdf.numPages; p++) {
+      const page = await pdf.getPage(p);
+      const H = page.view[3] - page.view[1];
+      const { hs, vs } = await getSegments(page, OPS, H);
+      const tables = buildTables(hs, vs);
+      const tc = await page.getTextContent();
+      const cells = tables.map((t) => Array.from({ length: t.ys.length - 1 }, () => Array.from({ length: t.xs.length - 1 }, () => [])));
+      for (const it of tc.items) {
+        if (!it.str || !it.str.trim()) continue;
+        const tr = it.transform;
+        const fs = Math.hypot(tr[2], tr[3]) || it.height || 8;
+        const x = tr[4], w = it.width;
+        const cy = H - (tr[5] + fs * 0.35), cx = x + w / 2;
+        for (let ti = 0; ti < tables.length; ti++) {
+          const t = tables[ti];
+          const r = locate(t.ys, cy), c = locate(t.xs, cx);
+          if (r >= 0 && c >= 0) { cells[ti][r][c].push({ str: it.str, x, w, cy, fs }); break; }
+        }
+      }
+      tables.forEach((t, ti) => {
+        grids.push({
+          page: p,
+          widths: t.xs.slice(1).map((x, i) => x - t.xs[i]),
+          rows: cells[ti].map((row) => row.map(cellLines)),
+        });
+      });
+      page.cleanup && page.cleanup();
+      if (onProgress) onProgress(p, pdf.numPages);
+    }
+    return grids;
+  }
+
+  // --- normalizzazione celle ---
+  const plain = (L) => L.map((l) => l.text).join(' ').trim();
+  const code = (L) => L.map((l) => l.text).join('').replace(/\s+/g, ' ').trim();
+  function joinHyphen(L) {
+    let s = '';
+    L.forEach((l, i) => { s += (i && !/[-/]$/.test(s) ? ' ' : '') + l.text; });
+    return s.trim();
+  }
+  // Le descrizioni vanno a capo anche a metà parola ("WH/T", "W/HT$"):
+  // un frammento di 1-2 lettere si riattacca alla riga precedente.
+  function desc(L) {
+    let s = '';
+    L.forEach((l, i) => {
+      if (i) {
+        const core = l.text.replace(/[$'"]+$/, '');
+        const glue = /^[A-Za-z]{1,2}$/.test(core) && /[A-Za-z]$/.test(L[i - 1].text);
+        s += glue || /\/$/.test(L[i - 1].text) ? '' : ' ';
+      }
+      s += l.text;
+    });
+    return s.trim();
+  }
+  const num = (s) => {
+    const v = parseFloat(String(s).replace(/[^0-9.\-]/g, ''));
+    return isFinite(v) ? v : 0;
+  };
+  function shortDate(s) {
+    const m = /^(\d{1,2})-([A-Za-z]{3})-(\d{2,4})$/.exec(String(s).trim());
+    if (!m || !MONTHS[m[2]]) return '';
+    const y = m[3].length === 2 ? 2000 + +m[3] : +m[3];
+    return `${y}-${pad(MONTHS[m[2]])}-${pad(+m[1])}`;
+  }
+  function headerDate(s) {
+    const m = /(\d{1,2}):(\d{2})\s+(\d{1,2})-([A-Za-z]{3})-(\d{4})/.exec(s);
+    if (!m) return null;
+    return `${m[5]}-${pad(MONTHS[m[4]])}-${pad(+m[3])}T${pad(+m[1])}:${m[2]}`;
+  }
+  function fragCount(f) {
+    if (!f) return 0;
+    return f.split(',').reduce((n, part) => {
+      const m = /\((\d+)\)\s*$/.exec(part.trim());
+      return n + (m ? +m[1] : part.trim() ? 1 : 0);
+    }, 0);
+  }
+
+  async function parseReport(pdf, OPS, onProgress) {
+    const grids = await parsePages(pdf, OPS, onProgress);
+    const meta = {}; const rows = []; const warnings = [];
+    for (const g of grids) {
+      const ncol = g.widths.length;
+      for (const row of g.rows) {
+        const t = row.map(plain);
+        if (ncol === 14) {
+          if (t[0] === 'Gender' || !t.join('')) continue;
+          const r = {
+            gender: plain(row[0]),
+            brand: plain(row[1]),
+            desc: desc(row[2]),
+            style: code(row[3]),
+            rrp: num(t[4]), sell: num(t[5]), ptype: t[6].toUpperCase(), qty: num(t[7]),
+            frag: joinHyphen(row[8]),
+            last: shortDate(t[9]),
+            u7: num(t[10]), v7: num(t[11]),
+            launch: shortDate(t[12]),
+            barcode: code(row[13]),
+            page: g.page,
+          };
+          if (r.gender.startsWith('Returns') || r.brand.startsWith('DUMMY')) { meta.dummyRows = (meta.dummyRows || 0) + 1; continue; }
+          if (t[9] && !r.last) warnings.push(`Data ultima vendita non letta: "${t[9]}" (${r.style})`);
+          if (r.frag && fragCount(r.frag) !== r.qty) warnings.push(`Taglie non coerenti con Qty per ${r.style}`);
+          rows.push(r);
+        } else if (ncol === 8 && t[0] !== 'Scan ID' && t.join('')) {
+          meta.scanId = t[0];
+          meta.completed = headerDate(t[1]);
+          meta.by = code(row[2]);
+          meta.branchName = plain(row[3]);
+          meta.branch = t[4];
+          meta.scanned = num(t[5]);
+          meta.declaredStyles = num(t[6]);
+          meta.declaredValue = num(t[7]);
+        }
+      }
+    }
+    // barcode unico come chiave riga
+    const seen = {};
+    for (const r of rows) {
+      const k = r.barcode || `${r.gender}|${r.style}`;
+      seen[k] = (seen[k] || 0) + 1;
+      r.key = seen[k] > 1 ? `${k}#${seen[k]}` : k;
+    }
+    const value = Math.round(rows.reduce((s, r) => s + r.qty * r.sell, 0) * 100) / 100;
+    const checks = {
+      rowsOk: meta.declaredStyles != null && rows.length + (meta.dummyRows || 0) === meta.declaredStyles,
+      valueOk: meta.declaredValue != null && Math.abs(value - meta.declaredValue) < 0.5,
+      rows: rows.length, dummy: meta.dummyRows || 0, value,
+    };
+    return { meta, rows, checks, warnings };
+  }
+
+  const api = { parseReport, shortDate, fragCount };
+  if (typeof module !== 'undefined') module.exports = api; else root.NODParser = api;
+})(this);
+
+</script>
+<script>
+// Motore storico: confronta snapshot consecutivi e genera eventi.
+// Distingue i DATI DEL REPORT (campi letti dal PDF) dai CALCOLI (differenze, stime).
+(function (root) {
+  const COLS = ['key', 'gender', 'brand', 'desc', 'style', 'rrp', 'sell', 'ptype', 'qty', 'frag', 'last', 'u7', 'v7', 'launch'];
+  const pack = (r) => COLS.map((c) => r[c] ?? '');
+  const unpack = (a) => {
+    const r = {};
+    COLS.forEach((c, i) => { r[c] = a[i]; });
+    r.barcode = String(r.key).replace(/#\d+$/, '');
+    return r;
+  };
+
+  const EVENT_TYPES = {
+    nuovo: 'Nuovo style',
+    tornato: 'Tornato disponibile',
+    scomparso: 'Uscito dal report',
+    zero: 'Arrivato a zero',
+    qty_su: 'Stock in aumento',
+    qty_giu: 'Stock in calo',
+    prezzo: 'Cambio prezzo',
+    rrp: 'Cambio RRP',
+    promo: 'Entrato in promo (TK)',
+    varprezzo: 'Variazione prezzo (NT)',
+    full: 'Tornato Full',
+    ptype: 'Cambio Price Type',
+    u7: 'Vendite 7gg cambiate',
+    v7: 'Valore vendite 7gg cambiato',
+    last: 'Nuova data ultima vendita',
+    taglie: 'Taglie cambiate',
+  };
+
+  const dayDiff = (a, b) => Math.round((Date.parse(a) - Date.parse(b)) / 86400000);
+  const r2 = (n) => Math.round(n * 100) / 100;
+
+  function ptypeEvent(a, b) {
+    if (a === b) return null;
+    if (b === 'FULL') return 'full';
+    if (a === 'FULL' && b === 'TK') return 'promo';
+    if (a === 'FULL' && b === 'NT') return 'varprezzo';
+    return 'ptype';
+  }
+
+  function diffPair(prev, cur, i, seenBefore) {
+    const ev = [];
+    const base = (r) => ({ i, key: r.key, style: r.style, desc: r.desc, brand: r.brand, gender: r.gender });
+    const push = (r, type, field, old, nw, delta) => ev.push({ ...base(r), type, field, old, nw, delta: delta ?? null });
+    for (const [k, c] of cur) {
+      const p = prev.get(k);
+      if (!p) {
+        push(c, seenBefore.has(k) ? 'tornato' : 'nuovo', 'qty', null, c.qty, null);
+        continue;
+      }
+      if (c.qty !== p.qty) {
+        if (c.qty === 0) push(c, 'zero', 'qty', p.qty, 0, -p.qty);
+        else push(c, c.qty > p.qty ? 'qty_su' : 'qty_giu', 'qty', p.qty, c.qty, c.qty - p.qty);
+      }
+      if (c.sell !== p.sell) push(c, 'prezzo', 'sell', p.sell, c.sell, r2(c.sell - p.sell));
+      if (c.rrp !== p.rrp && c.ptype === p.ptype) push(c, 'rrp', 'rrp', p.rrp, c.rrp, r2(c.rrp - p.rrp));
+      const pt = ptypeEvent(p.ptype, c.ptype);
+      if (pt) push(c, pt, 'ptype', p.ptype, c.ptype, null);
+      if (c.u7 !== p.u7) push(c, 'u7', 'u7', p.u7, c.u7, c.u7 - p.u7);
+      if (c.v7 !== p.v7) push(c, 'v7', 'v7', p.v7, c.v7, r2(c.v7 - p.v7));
+      if (c.last !== p.last) push(c, 'last', 'last', p.last || null, c.last || null, null);
+      if (c.frag !== p.frag) push(c, 'taglie', 'frag', p.frag || null, c.frag || null, null);
+    }
+    for (const [k, p] of prev) if (!cur.has(k)) push(p, 'scomparso', 'qty', p.qty, null, -p.qty);
+    return ev;
+  }
+
+  // snaps: [{meta, rows:[obj]}] dello stesso branch
+  function buildModel(snaps) {
+    const s = snaps.slice().sort((a, b) => String(a.meta.completed).localeCompare(String(b.meta.completed)));
+    const model = { snaps: s.map((x) => ({ meta: x.meta, map: new Map(x.rows.map((r) => [r.key, r])) })), events: [], firstSeen: new Map() };
+    const seen = new Set();
+    model.snaps.forEach((sn, i) => {
+      if (i > 0) model.events.push(...diffPair(model.snaps[i - 1].map, sn.map, i, seen));
+      for (const k of sn.map.keys()) { if (!seen.has(k)) { seen.add(k); model.firstSeen.set(k, i); } }
+    });
+    model.eventsByKey = new Map();
+    for (const e of model.events) {
+      if (!model.eventsByKey.has(e.key)) model.eventsByKey.set(e.key, []);
+      model.eventsByKey.get(e.key).push(e);
+    }
+    return model;
+  }
+
+  // Stima vendite tra due snapshot (CALCOLO, non dato del report):
+  // c'è stata almeno una vendita se la data di ultima vendita è avanzata;
+  // in quel caso la stima è il calo di stock, minimo 1.
+  function estSales(p, c) {
+    if (!p || !c) return null;
+    const advanced = c.last && (!p.last || c.last > p.last);
+    if (!advanced) return 0;
+    return Math.max(1, p.qty - c.qty);
+  }
+
+  function history(model, key) {
+    const out = [];
+    let prev = null;
+    model.snaps.forEach((sn, i) => {
+      const r = sn.map.get(key) || null;
+      out.push({ i, meta: sn.meta, row: r, delta: r && prev ? r.qty - prev.qty : null, est: prev && r ? estSales(prev, r) : null });
+      prev = r;
+    });
+    return out;
+  }
+
+  // Righe dello snapshot i arricchite con i calcoli
+  function rowsAt(model, i) {
+    const sn = model.snaps[i];
+    if (!sn) return [];
+    const prev = i > 0 ? model.snaps[i - 1].map : null;
+    const first = model.snaps[0].map;
+    const out = [];
+    for (const r of sn.map.values()) {
+      const p = prev ? prev.get(r.key) : null;
+      const fs = model.firstSeen.get(r.key);
+      const f = first.get(r.key) || model.snaps[fs].map.get(r.key);
+      let est = 0;
+      for (let j = 1; j <= i; j++) est += estSales(model.snaps[j - 1].map.get(r.key), model.snaps[j].map.get(r.key)) || 0;
+      out.push({
+        ...r,
+        calc: {
+          prevQty: p ? p.qty : null,
+          dPrev: p ? r.qty - p.qty : null,
+          firstQty: f.qty,
+          firstIdx: fs,
+          fromDay1: first.has(r.key),
+          dFirst: r.qty - f.qty,
+          discount: r.rrp > 0 ? Math.round((1 - r.sell / r.rrp) * 100) : null,
+          stockValue: r2(r.qty * r.sell),
+          estSales: i > 0 ? est : null,
+          daysSinceSale: r.last ? dayDiff(sn.meta.completed.slice(0, 10), r.last) : null,
+          isNew: prev ? !p : false,
+        },
+      });
+    }
+    return out;
+  }
+
+  function summary(model, i, opts) {
+    const o = Object.assign({ low: 2, oldDays: 60, bigAbs: 5, bigPct: 50 }, opts || {});
+    const rows = rowsAt(model, i);
+    const ev = model.events.filter((e) => e.i === i);
+    const by = (t) => ev.filter((e) => t.includes(e.type));
+    const meta = model.snaps[i].meta;
+    const styles = new Set(rows.map((r) => r.style));
+    const withDelta = rows.filter((r) => r.calc.dPrev);
+    return {
+      meta,
+      hasPrev: i > 0,
+      rows,
+      stock: {
+        qty: rows.reduce((s, r) => s + r.qty, 0),
+        value: meta.declaredValue ?? r2(rows.reduce((s, r) => s + r.qty * r.sell, 0)),
+        rows: rows.length,
+        styles: styles.size,
+        out: by(['scomparso', 'zero']),
+        low: rows.filter((r) => r.qty > 0 && r.qty <= o.low).sort((a, b) => a.qty - b.qty || b.u7 - a.u7),
+        up: withDelta.filter((r) => r.calc.dPrev > 0).sort((a, b) => b.calc.dPrev - a.calc.dPrev),
+        down: withDelta.filter((r) => r.calc.dPrev < 0).sort((a, b) => a.calc.dPrev - b.calc.dPrev),
+      },
+      sales: {
+        u7: rows.reduce((s, r) => s + r.u7, 0),
+        v7: r2(rows.reduce((s, r) => s + r.v7, 0)),
+        top: rows.filter((r) => r.u7 > 0).sort((a, b) => b.u7 - a.u7 || b.v7 - a.v7),
+        none: rows.filter((r) => r.u7 === 0),
+        recent: rows.filter((r) => r.last).sort((a, b) => b.last.localeCompare(a.last) || b.u7 - a.u7),
+        old: rows.filter((r) => r.calc.daysSinceSale !== null && r.calc.daysSinceSale > o.oldDays).sort((a, b) => b.calc.daysSinceSale - a.calc.daysSinceSale),
+        noDate: rows.filter((r) => !r.last),
+      },
+      prices: { promo: by(['promo']), varprezzo: by(['varprezzo']), full: by(['full']), change: by(['prezzo']), ptype: by(['ptype']) },
+      news: {
+        nuovi: by(['nuovo']),
+        tornati: by(['tornato']),
+        usciti: by(['scomparso', 'zero']),
+        big: ev.filter((e) => (e.type === 'qty_su' || e.type === 'qty_giu') && (Math.abs(e.delta) >= o.bigAbs || (e.old > 0 && Math.abs(e.delta) / e.old * 100 >= o.bigPct && Math.abs(e.delta) >= 2))),
+      },
+      events: ev,
+    };
+  }
+
+  const api = { COLS, pack, unpack, buildModel, history, rowsAt, summary, estSales, EVENT_TYPES, diffPair };
+  if (typeof module !== 'undefined') module.exports = api; else root.NODEngine = api;
+})(this);
+
+</script>
+<script>
+(function () {
+'use strict';
+const E = window.NODEngine, P = window.NODParser;
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const nf = new Intl.NumberFormat('it-IT');
+const ef = new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2 });
+const ef0 = new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
+const fN = (n) => n == null ? '—' : nf.format(n);
+const fE = (n) => n == null ? '—' : ef.format(n);
+const fD = (iso) => { if (!iso) return '—'; const [y, m, d] = iso.slice(0, 10).split('-'); return `${d}/${m}/${y.slice(2)}`; };
+const DOW = ['dom', 'lun', 'mar', 'mer', 'gio', 'ven', 'sab'];
+const fSnap = (m) => { if (!m || !m.completed) return '—'; const d = new Date(m.completed.slice(0, 10) + 'T12:00:00'); return `${DOW[d.getDay()]} ${fD(m.completed)} · ${m.completed.slice(11, 16)}`; };
+const norm = (s) => String(s || '').toUpperCase().replace(/[\s\-_./]/g, '');
+const PART = 500;
+
+/* ---------- impostazioni (solo comodità locale) ---------- */
+const SETTINGS_KEY = 'nod-settings';
+let settings = { low: 2, oldDays: 60, bigAbs: 5, bigPct: 50 };
+try { Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}')); } catch (e) {}
+const saveSettings = () => { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) {} };
+
+/* ---------- IndexedDB (cache, o archivio se il cloud non c'è) ---------- */
+function idbOpen() {
+  return new Promise((res) => {
+    try {
+      const rq = indexedDB.open('nod-stock', 1);
+      rq.onupgradeneeded = () => { const d = rq.result; d.createObjectStore('meta'); d.createObjectStore('rows'); };
+      rq.onsuccess = () => res(rq.result);
+      rq.onerror = () => res(null);
+    } catch (e) { res(null); }
+  });
+}
+function idbDo(db, store, mode, fn) {
+  return new Promise((res) => {
+    if (!db) return res(null);
+    try {
+      const tx = db.transaction(store, mode); const st = tx.objectStore(store);
+      const rq = fn(st);
+      tx.oncomplete = () => res(rq ? rq.result : true);
+      tx.onerror = () => res(null);
+    } catch (e) { res(null); }
+  });
+}
+
+/* ---------- archivio ---------- */
+const Store = {
+  cloud: null, idb: null, mode: 'memory', mem: { meta: {}, rows: {} },
+  async init() {
+    this.idb = await idbOpen();
+    this.cloud = null;
+    try { if (navigator.storage && navigator.storage.persist) this.persisted = await navigator.storage.persist(); } catch (e) {}
+    this.mode = this.idb ? 'local' : 'memory';
+  },
+  async listMeta() {
+    if (this.cloud) {
+      const snap = await this.cloud.collection('snaps').limit(1000).get();
+      return snap.docs.filter((d) => d.exists).map((d) => d.data());
+    }
+    if (this.idb) return (await idbDo(this.idb, 'meta', 'readonly', (s) => s.getAll())) || [];
+    return Object.values(this.mem.meta);
+  },
+  async loadRows(meta) {
+    const cached = await idbDo(this.idb, 'rows', 'readonly', (s) => s.get(meta.id));
+    if (cached && cached.length === meta.rows) return cached;
+    if (!this.cloud) return this.mem.rows[meta.id] || cached || [];
+    const parts = await Promise.all(Array.from({ length: meta.parts }, (_, i) => this.cloud.doc(`snaps/${meta.id}/parts/p${i}`).get()));
+    const packed = [];
+    parts.forEach((p) => { if (p.exists) packed.push(...p.data().r); });
+    await idbDo(this.idb, 'rows', 'readwrite', (s) => s.put(packed, meta.id));
+    return packed;
+  },
+  async save(meta, packed, onStep) {
+    const n = Math.ceil(packed.length / PART);
+    const full = { ...meta, parts: n, rows: packed.length, cols: E.COLS, importedAt: new Date().toISOString() };
+    if (this.cloud) {
+      for (let i = 0; i < n; i++) {
+        await this.cloud.doc(`snaps/${meta.id}/parts/p${i}`).set({ i, r: packed.slice(i * PART, (i + 1) * PART) });
+        onStep && onStep(i + 1, n + 1);
+      }
+      await this.cloud.doc(`snaps/${meta.id}`).set(full);
+      await idbDo(this.idb, 'rows', 'readwrite', (s) => s.put(packed, meta.id));
+    } else if (this.idb) {
+      await idbDo(this.idb, 'rows', 'readwrite', (s) => s.put(packed, meta.id));
+      await idbDo(this.idb, 'meta', 'readwrite', (s) => s.put(full, meta.id));
+    } else { this.mem.rows[meta.id] = packed; this.mem.meta[meta.id] = full; }
+    onStep && onStep(n + 1, n + 1);
+    return full;
+  },
+  async remove(meta) {
+    if (this.cloud) {
+      await this.cloud.doc(`snaps/${meta.id}`).delete();
+      for (let i = 0; i < meta.parts; i++) await this.cloud.doc(`snaps/${meta.id}/parts/p${i}`).delete();
+    } else if (this.idb) await idbDo(this.idb, 'meta', 'readwrite', (s) => s.delete(meta.id));
+    else delete this.mem.meta[meta.id];
+    await idbDo(this.idb, 'rows', 'readwrite', (s) => s.delete(meta.id));
+  },
+};
+
+/* ---------- stato ---------- */
+const S = {
+  metas: [], branch: null, model: null, idx: -1, tab: 'dash',
+  dashSel: { stock: 'up', sales: 'top', prices: 'promo', news: 'nuovi' },
+  art: { q: '', brand: '', gender: '', ptype: '', qmin: '', qmax: '', u7min: '', lastOld: '', onlyNew: false, sort: 'qty', limit: 60, showFilters: false },
+  ev: { from: null, to: null, types: null, q: '', limit: 200 },
+  pending: null, confirmDel: null, busy: false,
+};
+let sumCache = { k: null, v: {} };
+function summ(i) {
+  if (i == null) i = S.idx;
+  const k = `${S.branch}|${S.model.snaps.length}|${JSON.stringify(settings)}`;
+  if (sumCache.k !== k) sumCache = { k, v: {} };
+  if (!sumCache.v[i]) sumCache.v[i] = E.summary(S.model, i, settings);
+  return sumCache.v[i];
+}
+
+function toast(msg) {
+  const t = $('#toast'); t.textContent = msg; t.hidden = false;
+  clearTimeout(toast._t); toast._t = setTimeout(() => { t.hidden = true; }, 3200);
+}
+
+/* ---------- caricamento ---------- */
+async function loadAll(keepIdx) {
+  S.metas = (await Store.listMeta()).filter((m) => m && m.id && m.completed).sort((a, b) => a.completed.localeCompare(b.completed));
+  const branches = [...new Set(S.metas.map((m) => m.branch))];
+  if (!S.branch || !branches.includes(S.branch)) S.branch = S.metas.length ? S.metas[S.metas.length - 1].branch : null;
+  const bs = $('#branchSel');
+  bs.hidden = branches.length < 2;
+  bs.innerHTML = branches.map((b) => { const m = S.metas.find((x) => x.branch === b); return `<option value="${esc(b)}"${b === S.branch ? ' selected' : ''}>${esc(b)} ${esc(m.branchName || '')}</option>`; }).join('');
+  const mine = S.metas.filter((m) => m.branch === S.branch);
+  const snaps = [];
+  let done = 0;
+  for (const m of mine) {
+    const packed = await Store.loadRows(m);
+    snaps.push({ meta: m, rows: packed.map(E.unpack) });
+    done++;
+    const b = $('#bootBar'); if (b) { b.style.width = `${15 + 85 * done / mine.length}%`; $('#bootMsg').textContent = `Carico lo storico: ${done} di ${mine.length} report`; }
+  }
+  S.model = snaps.length ? E.buildModel(snaps) : null;
+  sumCache = { k: null, v: {} };
+  const n = S.model ? S.model.snaps.length : 0;
+  S.idx = keepIdx != null && keepIdx < n ? keepIdx : n - 1;
+  S.ev.to = null; S.ev.from = null;
+  $('#branchTag').textContent = S.branch || '—';
+  renderSnapSel();
+}
+
+function renderSnapSel() {
+  const sel = $('#snapSel');
+  if (!S.model) { sel.innerHTML = '<option>Nessun report caricato</option>'; sel.disabled = true; return; }
+  sel.disabled = false;
+  sel.innerHTML = S.model.snaps.map((s, i) => `<option value="${i}"${i === S.idx ? ' selected' : ''}>${i === 0 ? 'Giorno 1 · ' : ''}${esc(fSnap(s.meta))}</option>`).reverse().join('');
+}
+
+/* ---------- componenti ---------- */
+const tagR = '<span class="tag rep">report</span>';
+const tagC = '<span class="tag calc">calcolo</span>';
+function dp(d, money) {
+  if (d == null) return '';
+  const cls = d > 0 ? 'up' : d < 0 ? 'down' : 'zero';
+  const v = money ? ef.format(Math.abs(d)) : nf.format(Math.abs(d));
+  return `<span class="dp ${cls}">${d > 0 ? '+' : d < 0 ? '−' : '±'}${v}</span>`;
+}
+const pt = (t) => t ? `<span class="pt ${esc(t)}">${esc(t)}</span>` : '';
+function rowItem(r, right) {
+  return `<button class="ri" data-open="${esc(r.key)}"><span class="ri-main"><span class="code">${esc(r.style)}</span><span class="ri-sub">${esc(r.desc)}</span><span class="ri-sub">${esc(r.brand)} · ${esc(r.gender)}</span></span><span class="ri-right">${right}</span></button>`;
+}
+const qtyRight = (r, extra) => `<span class="big">${fN(r.qty)}</span><span class="small">${extra || 'pz'}</span>`;
+function evValue(e) {
+  const f = e.field;
+  const v = (x) => x == null ? '—' : f === 'sell' || f === 'rrp' || f === 'v7' ? fE(x) : f === 'last' ? fD(x) : f === 'ptype' ? x : f === 'frag' ? x : fN(x);
+  if (e.type === 'nuovo' || e.type === 'tornato') return `<span class="arrow">${v(e.nw)} pz</span>`;
+  if (e.type === 'scomparso') return `<span class="arrow">${v(e.old)} pz → assente</span>`;
+  return `<span class="arrow">${esc(v(e.old))} → ${esc(v(e.nw))}</span>`;
+}
+function evItem(e, showType) {
+  const d = e.delta != null ? dp(e.delta, e.field === 'sell' || e.field === 'rrp' || e.field === 'v7') : '';
+  const right = `${evValue(e)}${d}${showType ? `<span class="ev-type">${esc(E.EVENT_TYPES[e.type])}</span>` : ''}`;
+  return rowItem(e, right);
+}
+
+/* ---------- vista: Oggi ---------- */
+const DASH = [
+  { id: 'stock', title: 'Stock', lists: [
+    ['up', 'Maggiori aumenti', true, (s) => s.stock.up, (r) => `<span class="big">${fN(r.qty)}</span>${dp(r.calc.dPrev)}`],
+    ['down', 'Maggiori cali', true, (s) => s.stock.down, (r) => `<span class="big">${fN(r.qty)}</span>${dp(r.calc.dPrev)}`],
+    ['low', 'Stock basso', false, (s) => s.stock.low, (r) => qtyRight(r, r.frag ? esc(r.frag) : 'pz')],
+    ['out', 'Usciti / a zero', true, (s) => s.stock.out, null],
+  ] },
+  { id: 'sales', title: 'Vendite', lists: [
+    ['top', 'Più vendute 7gg', false, (s) => s.sales.top, (r) => `<span class="big">${fN(r.u7)}</span><span class="small">${fE(r.v7)} · stock ${fN(r.qty)}</span>`],
+    ['recent', 'Vendita più recente', false, (s) => s.sales.recent, (r) => `<span class="big">${fD(r.last)}</span><span class="small">7gg: ${fN(r.u7)} pz</span>`],
+    ['old', 'Ultima vendita vecchia', false, (s) => s.sales.old, (r) => `<span class="big">${fD(r.last)}</span><span class="small">${r.calc.daysSinceSale} giorni · ${fN(r.qty)} pz</span>`],
+    ['none', 'Senza vendite 7gg', false, (s) => s.sales.none, (r) => qtyRight(r, r.last ? 'ultima ' + fD(r.last) : 'nessuna data')],
+  ] },
+  { id: 'prices', title: 'Prezzi', lists: [
+    ['promo', 'Entrati in promo', true, (s) => s.prices.promo, null],
+    ['varprezzo', 'Passati a NT', true, (s) => s.prices.varprezzo, null],
+    ['full', 'Tornati Full', true, (s) => s.prices.full, null],
+    ['change', 'Cambi prezzo', true, (s) => s.prices.change, null],
+  ] },
+  { id: 'news', title: 'Novità', lists: [
+    ['nuovi', 'Nuovi style', true, (s) => s.news.nuovi, null],
+    ['usciti', 'Scomparsi', true, (s) => s.news.usciti, null],
+    ['tornati', 'Tornati disponibili', true, (s) => s.news.tornati, null],
+    ['big', 'Cambi significativi', true, (s) => s.news.big, null],
+  ] },
+];
+function itemFor(def, x) { return def[4] ? rowItem(x, def[4](x)) : evItem(x, false); }
+
+function emptyState() {
+  return `<div class="view"><div class="lede"><h1>Nessun report nello storico</h1></div>
+  <div class="card"><div class="import"><p style="margin:0">Carica il primo PDF <b>Not on Display</b>: diventerà il Giorno 1. Ogni report successivo verrà confrontato con i precedenti.</p>
+  <button class="btn primary" data-pick>Carica report PDF</button></div></div></div>`;
+}
+
+function renderDash() {
+  if (!S.model) return emptyState();
+  const s = summ();
+  const prev = S.idx > 0 ? S.model.snaps[S.idx - 1].meta : null;
+  const prevSum = prev ? summ(S.idx - 1) : null;
+  const dQty = prevSum ? s.stock.qty - prevSum.stock.qty : null;
+  const dVal = prevSum ? Math.round((s.stock.value - prevSum.stock.value) * 100) / 100 : null;
+  const kpi = (label, val, sub, calc, tag) => `<div class="kpi${calc ? ' c' : ''}"><div class="k"><span>${label}</span>${tag}</div><div class="v">${val}</div><div class="s">${sub || ''}</div></div>`;
+  let h = `<div class="view">
+  <div class="lede"><h1>${S.idx === 0 ? 'Giorno 1' : 'Report del ' + fD(s.meta.completed)}</h1><p>${esc(s.meta.branchName || '')} · ${esc(fSnap(s.meta))}${prev ? ` · confronto con ${fD(prev.completed)}` : ' · base dello storico'}</p></div>
+  <div class="legend">${tagR} letto dal PDF ${tagC} ricavato confrontando i report</div>
+  <div class="kpis">
+    ${kpi('Stock totale', fN(s.stock.qty), dQty != null ? `${dp(dQty)} da ieri` : 'pezzi', false, tagR)}
+    ${kpi('Valore stock', ef0.format(s.stock.value), dVal != null ? `${dp(dVal, true)}` : 'qty × prezzo vendita', false, tagR)}
+    ${kpi('Style in stock', fN(s.stock.styles), `${fN(s.stock.rows)} righe`, false, tagR)}
+    ${kpi('Usciti dal report', prev ? fN(s.stock.out.length) : '—', prev ? 'rispetto al report precedente' : 'dal secondo report', true, tagC)}
+    ${kpi('Stock basso', fN(s.stock.low.length), `≤ ${settings.low} pz`, false, tagR)}
+    ${kpi('Vendite 7gg', fN(s.sales.u7), 'pezzi, finestra mobile', false, tagR)}
+    ${kpi('Valore vendite 7gg', ef0.format(s.sales.v7), 'incassato, finestra mobile', false, tagR)}
+    ${kpi('Senza vendite 7gg', fN(s.sales.none.length), `${fN(s.sales.noDate.length)} senza data vendita`, false, tagR)}
+  </div>`;
+  for (const sec of DASH) {
+    const selId = S.dashSel[sec.id];
+    const def = sec.lists.find((l) => l[0] === selId) || sec.lists[0];
+    const items = def[3](s);
+    h += `<section class="card"><header><h2>${sec.title}</h2></header><div class="chips" role="group">`;
+    for (const l of sec.lists) {
+      const n = l[2] && !prev ? '' : `<span class="n">${fN(l[3](s).length)}</span>`;
+      h += `<button class="chip" data-dash="${sec.id}:${l[0]}" aria-pressed="${l[0] === def[0]}">${l[1]}${n}</button>`;
+    }
+    h += `</div><div class="list">`;
+    if (def[2] && !prev) h += `<div class="empty">Questo confronto compare dal secondo report caricato.</div>`;
+    else if (!items.length) h += `<div class="empty">Nessun articolo in questa lista.</div>`;
+    else {
+      h += items.slice(0, 5).map((x) => itemFor(def, x)).join('');
+      if (items.length > 5) h += `<button class="more" data-all="${sec.id}:${def[0]}"><span>Vedi tutti</span><span class="num">${fN(items.length)}</span></button>`;
+    }
+    h += `</div></section>`;
+  }
+  return h + '</div>';
+}
+
+function openAll(secId, listId) {
+  const s = summ();
+  const sec = DASH.find((x) => x.id === secId); const def = sec.lists.find((l) => l[0] === listId);
+  const items = def[3](s);
+  let shown = 150;
+  const draw = () => {
+    $('#sheetBody').innerHTML = `<div class="view"><p class="note" style="padding:0">${fN(items.length)} articoli · ${esc(fSnap(s.meta))}</p><div class="card"><div class="list">${items.slice(0, shown).map((x) => itemFor(def, x)).join('')}${items.length > shown ? `<button class="more" data-sheetmore><span>Mostra altri</span><span class="num">${fN(items.length - shown)}</span></button>` : ''}</div></div></div>`;
+  };
+  openSheet(def[1], draw);
+  sheetMore = () => { shown += 150; draw(); };
+  sheetStack[sheetStack.length - 1].more = sheetMore;
+}
+
+/* ---------- vista: Variazioni ---------- */
+const EV_GROUPS = [
+  ['Stock', ['qty_su', 'qty_giu', 'zero', 'scomparso', 'nuovo', 'tornato']],
+  ['Prezzi', ['promo', 'varprezzo', 'full', 'ptype', 'prezzo', 'rrp']],
+  ['Vendite', ['u7', 'v7', 'last']],
+  ['Taglie', ['taglie']],
+];
+function renderVar() {
+  if (!S.model) return emptyState();
+  const n = S.model.snaps.length;
+  if (n < 2) return `<div class="view"><div class="lede"><h1>Variazioni</h1><p>Lo storico parte dal ${fD(S.model.snaps[0].meta.completed)}.</p></div><div class="card"><div class="empty" style="border:0">Le variazioni compaiono quando carichi il secondo report: ogni cambiamento verrà registrato con data, style, valore precedente, valore nuovo e differenza.</div></div></div>`;
+  if (S.ev.to == null || S.ev.to >= n) S.ev.to = S.idx > 0 ? S.idx : n - 1;
+  if (S.ev.from == null || S.ev.from >= S.ev.to) S.ev.from = S.ev.to - 1;
+  if (!S.ev.types) S.ev.types = new Set(Object.keys(E.EVENT_TYPES));
+  const opt = (i, sel, minI, maxI) => S.model.snaps.map((s, k) => k < minI || k > maxI ? '' : `<option value="${k}"${k === sel ? ' selected' : ''}>${esc(fSnap(s.meta))}</option>`).join('');
+  let h = `<div class="view"><div class="lede"><h1>Variazioni</h1><p>Ogni cambiamento tra due report: valore precedente, nuovo e differenza.</p></div>
+  <div class="card"><div class="filters" style="padding-top:12px">
+    <div class="row2"><div class="field"><label for="evFrom">Dal report</label><select id="evFrom">${opt(0, S.ev.from, 0, S.ev.to - 1)}</select></div>
+    <div class="field"><label for="evTo">Al report</label><select id="evTo">${opt(0, S.ev.to, S.ev.from + 1, n - 1)}</select></div></div>
+    <div class="field"><label for="evQ">Filtra per style, brand o descrizione</label><input id="evQ" type="search" value="${esc(S.ev.q)}" placeholder="es. AF1, NIKE, HQ8707" autocomplete="off"></div>
+  </div></div><div id="evBody" class="view">${evBody()}</div></div>`;
+  return h;
+}
+function evBody() {
+  const inRange = S.model.events.filter((e) => e.i > S.ev.from && e.i <= S.ev.to);
+  const q = norm(S.ev.q);
+  const counts = {};
+  inRange.forEach((e) => { counts[e.type] = (counts[e.type] || 0) + 1; });
+  const list = inRange.filter((e) => S.ev.types.has(e.type) && (!q || norm(e.style).includes(q) || norm(e.desc).includes(q) || norm(e.brand).includes(q)));
+  let h = `<div class="card"><div class="toolbar" style="padding:12px 12px 2px"><span>${fN(list.length)} cambiamenti</span>${tagC}</div>`;
+  for (const [g, types] of EV_GROUPS) {
+    h += `<div class="chips" role="group" aria-label="${g}"><span class="chip" style="border:0;background:none;padding-inline:0;font-weight:600">${g}</span>`;
+    h += types.map((t) => `<button class="chip" data-evt="${t}" aria-pressed="${S.ev.types.has(t)}">${E.EVENT_TYPES[t]}<span class="n">${fN(counts[t] || 0)}</span></button>`).join('');
+    h += `</div>`;
+  }
+  h += `<div class="chips"><button class="chip" data-evall="1">Tutti</button><button class="chip" data-evall="0">Nessuno</button><button class="chip" data-evall="stock">Solo stock e prezzi</button></div></div>`;
+  h += `<div class="card"><div class="list">`;
+  if (!list.length) h += `<div class="empty" style="border:0">Nessuna variazione con questi filtri.</div>`;
+  let lastI = null, c = 0;
+  const order = Object.keys(E.EVENT_TYPES);
+  for (const e of list.slice().sort((a, b) => b.i - a.i || order.indexOf(a.type) - order.indexOf(b.type) || String(a.style).localeCompare(String(b.style)))) {
+    if (c >= S.ev.limit) break;
+    if (e.i !== lastI) { h += `<div class="dayhead">${esc(fSnap(S.model.snaps[e.i].meta))}</div>`; lastI = e.i; }
+    h += evItem(e, true); c++;
+  }
+  if (list.length > S.ev.limit) h += `<button class="more" data-evmore><span>Mostra altri</span><span class="num">${fN(list.length - S.ev.limit)}</span></button>`;
+  return h + `</div></div>`;
+}
+
+/* ---------- vista: Articoli ---------- */
+function renderArt() {
+  if (!S.model) return emptyState();
+  const a = S.art;
+  return `<div class="view"><div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><input id="artQ" type="search" value="${esc(a.q)}" placeholder="Style Code, anche più codici: ABC123 + DEF456" autocomplete="off" autocapitalize="characters" aria-label="Cerca"></div><div id="artBody" class="view">${artBody()}</div></div>`;
+}
+function artBody() {
+  const s = summ(); const a = S.art;
+  const rows = s.rows;
+  const tokens = a.q.split(/[\s,+;]+/).map(norm).filter(Boolean);
+  const multi = tokens.length > 1 && /[\s,+;]/.test(a.q.trim());
+  const brands = [...new Set(rows.map((r) => r.brand))].sort();
+  const genders = [...new Set(rows.map((r) => r.gender))].sort();
+  let h = '';
+  if (multi) {
+    const found = []; const missing = [];
+    for (const t of tokens) {
+      let m = rows.filter((r) => norm(r.style) === t);
+      if (!m.length) m = rows.filter((r) => norm(r.style).includes(t) || norm(r.barcode) === t);
+      if (m.length) m.forEach((r) => { if (!found.includes(r)) found.push(r); }); else missing.push(t);
+    }
+    h += `<div class="toolbar"><span>Confronto: ${fN(found.length)} righe ${tagR} ${tagC}</span></div>`;
+    if (missing.length) h += `<div class="warnbox">Non presenti in questo report: ${missing.map(esc).join(', ')}</div>`;
+    if (found.length) h += compareTable(found);
+    return h;
+  }
+  const f = rows.filter((r) => {
+    if (tokens.length === 1 && !(norm(r.style).includes(tokens[0]) || norm(r.desc).includes(tokens[0]) || norm(r.barcode).includes(tokens[0]))) return false;
+    if (a.brand && r.brand !== a.brand) return false;
+    if (a.gender && r.gender !== a.gender) return false;
+    if (a.ptype && r.ptype !== a.ptype) return false;
+    if (a.qmin !== '' && r.qty < +a.qmin) return false;
+    if (a.qmax !== '' && r.qty > +a.qmax) return false;
+    if (a.u7min !== '' && r.u7 < +a.u7min) return false;
+    if (a.lastOld === 'none' && r.last) return false;
+    if (a.lastOld && a.lastOld !== 'none' && !(r.calc.daysSinceSale > +a.lastOld)) return false;
+    if (a.onlyNew && !r.calc.isNew) return false;
+    return true;
+  });
+  const sorts = {
+    qty: (x, y) => y.qty - x.qty, qtyAsc: (x, y) => x.qty - y.qty, u7: (x, y) => y.u7 - x.u7 || y.v7 - x.v7,
+    last: (x, y) => (y.last || '').localeCompare(x.last || ''), lastOld: (x, y) => (x.last || '0').localeCompare(y.last || '0'),
+    dPrev: (x, y) => (x.calc.dPrev ?? 0) - (y.calc.dPrev ?? 0), value: (x, y) => y.calc.stockValue - x.calc.stockValue,
+    style: (x, y) => x.style.localeCompare(y.style),
+  };
+  f.sort(sorts[a.sort] || sorts.qty);
+  const active = ['brand', 'gender', 'ptype', 'qmin', 'qmax', 'u7min', 'lastOld'].filter((k) => a[k] !== '').length + (a.onlyNew ? 1 : 0);
+  const o = (v, l, cur) => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${esc(l)}</option>`;
+  h += `<section class="card"><header><button class="btn ghost" data-togglefilters style="padding-inline:0;border:0">Filtri${active ? ` (${active})` : ''} ${a.showFilters ? '▴' : '▾'}</button>
+    <select id="artSort" aria-label="Ordina" style="background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-size:13px">
+      ${o('qty', 'Stock ↓', a.sort)}${o('qtyAsc', 'Stock ↑', a.sort)}${o('u7', 'Vendite 7gg ↓', a.sort)}${o('last', 'Vendita più recente', a.sort)}${o('lastOld', 'Vendita più vecchia', a.sort)}${o('dPrev', 'Calo da ieri', a.sort)}${o('value', 'Valore stock ↓', a.sort)}${o('style', 'Style Code A-Z', a.sort)}
+    </select></header>`;
+  if (a.showFilters) {
+    h += `<div class="filters">
+      <div class="row2"><div class="field"><label for="fBrand">Brand</label><select id="fBrand">${o('', 'Tutti', a.brand)}${brands.map((b) => o(b, b, a.brand)).join('')}</select></div>
+      <div class="field"><label for="fGender">Categoria</label><select id="fGender">${o('', 'Tutte', a.gender)}${genders.map((b) => o(b, b, a.gender)).join('')}</select></div></div>
+      <div class="row2"><div class="field"><label for="fPtype">Price Type</label><select id="fPtype">${o('', 'Tutti', a.ptype)}${o('FULL', 'FULL', a.ptype)}${o('TK', 'TK · promo', a.ptype)}${o('NT', 'NT · variazione prezzo', a.ptype)}</select></div>
+      <div class="field"><label for="fLast">Ultima vendita</label><select id="fLast">${o('', 'Qualsiasi', a.lastOld)}${o('30', 'Più di 30 giorni fa', a.lastOld)}${o('60', 'Più di 60 giorni fa', a.lastOld)}${o('90', 'Più di 90 giorni fa', a.lastOld)}${o('180', 'Più di 180 giorni fa', a.lastOld)}${o('none', 'Nessuna data nel report', a.lastOld)}</select></div></div>
+      <div class="row2"><div class="field"><label for="fQmin">Stock da</label><input id="fQmin" inputmode="numeric" value="${esc(a.qmin)}" placeholder="0"></div>
+      <div class="field"><label for="fQmax">Stock fino a</label><input id="fQmax" inputmode="numeric" value="${esc(a.qmax)}" placeholder="∞"></div></div>
+      <div class="row2"><div class="field"><label for="fU7">Vendite 7gg almeno</label><input id="fU7" inputmode="numeric" value="${esc(a.u7min)}" placeholder="0"></div>
+      <div class="field"><label for="fNew">Novità</label><select id="fNew">${o('', 'Tutti', a.onlyNew ? '1' : '')}${o('1', 'Solo nuovi in questo report', a.onlyNew ? '1' : '')}</select></div></div>
+      ${active ? '<button class="btn" data-clearfilters>Azzera filtri</button>' : ''}
+    </div>`;
+  }
+  const totQ = f.reduce((x, r) => x + r.qty, 0), totU = f.reduce((x, r) => x + r.u7, 0);
+  h += `<div class="toolbar" style="padding:0 12px 10px"><span>${fN(f.length)} righe · ${fN(totQ)} pz · ${fN(totU)} venduti 7gg</span></div><div class="list">`;
+  h += f.slice(0, a.limit).map((r) => rowItem(r, `<span class="big">${fN(r.qty)}</span><span class="small">${pt(r.ptype)} ${fE(r.sell)}</span>${r.calc.dPrev ? dp(r.calc.dPrev) : ''}`)).join('');
+  if (!f.length) h += `<div class="empty">Nessun articolo trovato.</div>`;
+  if (f.length > a.limit) h += `<button class="more" data-artmore><span>Mostra altri</span><span class="num">${fN(f.length - a.limit)}</span></button>`;
+  return h + '</div></section>';
+}
+
+function compareTable(rs) {
+  const hasPrev = S.idx > 0;
+  const lines = [
+    ['Brand', (r) => esc(r.brand)], ['Categoria', (r) => esc(r.gender)], ['Descrizione', (r) => esc(r.desc)],
+    ['Stock', (r) => `<b>${fN(r.qty)}</b>`],
+    ['Δ da ieri', (r) => hasPrev ? (r.calc.dPrev == null ? 'nuovo' : dp(r.calc.dPrev) || '0') : '—', 1],
+    ['Stock iniziale', (r) => `${fN(r.calc.firstQty)}${r.calc.fromDay1 ? '' : ' (dal ' + fD(S.model.snaps[r.calc.firstIdx].meta.completed) + ')'}`, 1],
+    ['Δ da inizio', (r) => dp(r.calc.dFirst) || '0', 1],
+    ['Prezzo vendita', (r) => fE(r.sell)], ['RRP', (r) => r.rrp ? fE(r.rrp) : '—'], ['Price Type', (r) => pt(r.ptype)],
+    ['Sconto su RRP', (r) => r.calc.discount != null ? r.calc.discount + '%' : '—', 1],
+    ['Vendite 7gg', (r) => fN(r.u7)], ['Valore 7gg', (r) => fE(r.v7)], ['Ultima vendita', (r) => fD(r.last)],
+    ['Stima vendite', (r) => r.calc.estSales == null ? '—' : fN(r.calc.estSales), 1],
+    ['Taglie', (r) => r.frag ? esc(r.frag) : r.qty > 3 ? 'non nel report' : '—'], ['Barcode', (r) => `<span class="mono">${esc(r.barcode)}</span>`],
+  ];
+  return `<div class="card"><div class="cmpwrap" style="border:0"><table class="cmp"><thead><tr><th scope="col"></th>${rs.map((r) => `<th scope="col"><button class="code" data-open="${esc(r.key)}" style="background:none;border:0;padding:0;text-decoration:underline">${esc(r.style)}</button></th>`).join('')}</tr></thead><tbody>${lines.map((l) => `<tr${l[2] ? ' class="c"' : ''}><th scope="row">${l[0]}</th>${rs.map((r) => `<td>${l[1](r)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
+  <p class="note">Le righe marcate ·calc sono calcolate dall'app confrontando i report. La stima vendite conta i giorni in cui la data di ultima vendita è avanzata.</p></div>`;
+}
+
+/* ---------- scheda articolo ---------- */
+function sparkline(hist) {
+  const pts = hist.map((h, i) => ({ i, q: h.row ? h.row.qty : null }));
+  const vals = pts.filter((p) => p.q != null).map((p) => p.q);
+  if (pts.length < 2) return '';
+  const W = 320, H = 86, pl = 26, pr = 10, pt_ = 10, pb = 18;
+  const max = Math.max(1, ...vals), n = pts.length;
+  const x = (i) => pl + (W - pl - pr) * (n === 1 ? 0 : i / (n - 1));
+  const y = (q) => pt_ + (H - pt_ - pb) * (1 - q / max);
+  let path = '', area = '', seg = [];
+  const flush = () => { if (seg.length) { path += 'M' + seg.map((p) => `${x(p.i).toFixed(1)},${y(p.q).toFixed(1)}`).join('L'); area += `M${x(seg[0].i).toFixed(1)},${y(0)}L` + seg.map((p) => `${x(p.i).toFixed(1)},${y(p.q).toFixed(1)}`).join('L') + `L${x(seg[seg.length - 1].i).toFixed(1)},${y(0)}Z`; } seg = []; };
+  pts.forEach((p) => { if (p.q == null) flush(); else seg.push(p); }); flush();
+  const last = [...pts].reverse().find((p) => p.q != null);
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Andamento stock">
+    <line x1="${pl}" x2="${W - pr}" y1="${y(0)}" y2="${y(0)}" stroke="var(--line)"/>
+    <line x1="${pl}" x2="${W - pr}" y1="${y(max)}" y2="${y(max)}" stroke="var(--line)" stroke-dasharray="2 3"/>
+    <text x="${pl - 5}" y="${y(max) + 4}" text-anchor="end" font-size="10" fill="var(--muted)" font-family="IBM Plex Mono, monospace">${max}</text>
+    <text x="${pl - 5}" y="${y(0) + 4}" text-anchor="end" font-size="10" fill="var(--muted)" font-family="IBM Plex Mono, monospace">0</text>
+    <text x="${pl}" y="${H - 3}" font-size="10" fill="var(--muted)" font-family="IBM Plex Mono, monospace">${fD(hist[0].meta.completed)}</text>
+    <text x="${W - pr}" y="${H - 3}" text-anchor="end" font-size="10" fill="var(--muted)" font-family="IBM Plex Mono, monospace">${fD(hist[n - 1].meta.completed)}</text>
+    <path d="${area}" fill="var(--label)" fill-opacity=".35"/>
+    <path d="${path}" fill="none" stroke="var(--ink)" stroke-width="2" stroke-linejoin="round"/>
+    ${last ? `<circle cx="${x(last.i)}" cy="${y(last.q)}" r="4" fill="var(--ink)"/>` : ''}
+  </svg>`;
+}
+
+function openItem(key) {
+  const rowsNow = summ().rows;
+  let r = rowsNow.find((x) => x.key === key);
+  const hist = E.history(S.model, key);
+  const lastSeen = [...hist].reverse().find((h) => h.row);
+  const base = r || (lastSeen && lastSeen.row);
+  if (!base) return;
+  const g = (l, v) => `<div><span class="l">${l}</span><span class="v">${v}</span></div>`;
+  let h = `<div class="view"><div class="ticket"><div class="hero-code">${esc(base.style)}</div><div style="font-weight:600">${esc(base.desc)}</div>
+    <div class="meta"><span>${esc(base.brand)}</span><span>${esc(base.gender)}</span><span>${pt(base.ptype)}</span><span>${esc(S.model.snaps[S.idx].meta.branch)} ${esc(S.model.snaps[S.idx].meta.branchName || '')}</span></div>
+    <div class="bc">${esc(base.barcode)}</div></div>`;
+  if (!r) h += `<div class="warnbox">Non presente nel report del ${fD(S.model.snaps[S.idx].meta.completed)}. Ultima presenza: ${fD(lastSeen.meta.completed)} con ${fN(lastSeen.row.qty)} pz. L'assenza può dipendere da esaurimento, trasferimento o esposizione.</div>`;
+  else {
+    h += `<section class="card"><header><h2>Dati del report</h2>${tagR}</header><div class="grid">
+      ${g('Stock attuale', fN(r.qty) + ' pz')}${g('Prezzo vendita', fE(r.sell))}${g('RRP', r.rrp ? fE(r.rrp) : '— (Full)')}
+      ${g('Price Type', pt(r.ptype))}${g('Vendite 7gg', fN(r.u7) + ' pz')}${g('Valore vendite 7gg', fE(r.v7))}
+      ${g('Ultima vendita', fD(r.last))}${g('Taglie', r.frag ? esc(r.frag) : r.qty > 3 ? 'non nel report (> 3 pz)' : '—')}${g('Launch', fD(r.launch))}
+    </div><p class="note">Vendite 7gg è un totale mobile degli ultimi 7 giorni, non le vendite di oggi.</p></section>
+    <section class="card"><header><h2>Calcoli</h2>${tagC}</header><div class="grid c">
+      ${g('Stock iniziale', fN(r.calc.firstQty) + (r.calc.fromDay1 ? ' (Giorno 1)' : ' (dal ' + fD(S.model.snaps[r.calc.firstIdx].meta.completed) + ')'))}
+      ${g('Δ da ieri', S.idx > 0 ? (r.calc.dPrev == null ? 'nuovo oggi' : dp(r.calc.dPrev) || '0') : '—')}
+      ${g('Δ da inizio', dp(r.calc.dFirst) || '0')}
+      ${g('Valore in stock', fE(r.calc.stockValue))}${g('Sconto su RRP', r.calc.discount != null ? r.calc.discount + '%' : '—')}
+      ${g('Giorni da ultima vendita', r.calc.daysSinceSale ?? '—')}
+      ${g('Stima vendite nel periodo', r.calc.estSales == null ? 'dal 2° report' : fN(r.calc.estSales))}
+    </div><p class="note">Un calo di stock non è per forza una vendita: può essere un trasferimento o un altro movimento. La stima vendite considera solo i giorni in cui la data di ultima vendita è avanzata.</p></section>`;
+  }
+  h += `<section class="card"><header><h2>Andamento</h2>${tagC}</header><div class="spark">${sparkline(hist)}</div>
+    <div style="overflow-x:auto"><table class="hist"><thead><tr><th>Report</th><th>Qty</th><th>Δ</th><th>Prezzo</th><th>Type</th><th>7gg</th><th>Stima</th></tr></thead><tbody>
+    ${hist.slice().reverse().map((x) => x.row ? `<tr><td>${fD(x.meta.completed)}</td><td><b>${fN(x.row.qty)}</b></td><td>${x.delta == null ? '' : dp(x.delta) || '0'}</td><td>${fE(x.row.sell)}</td><td>${pt(x.row.ptype)}</td><td>${fN(x.row.u7)}</td><td>${x.est == null ? '' : x.est}</td></tr>` : `<tr><td>${fD(x.meta.completed)}</td><td colspan="6" class="absent">non presente nel report</td></tr>`).join('')}
+    </tbody></table></div></section>`;
+  const evs = (S.model.eventsByKey.get(key) || []).slice().sort((a, b) => b.i - a.i);
+  h += `<section class="card"><header><h2>Variazioni registrate</h2>${tagC}</header><div class="list">`;
+  if (!evs.length) h += `<div class="empty">${S.model.snaps.length < 2 ? 'Compariranno dal secondo report.' : 'Nessuna variazione finora.'}</div>`;
+  let li = null;
+  for (const e of evs) {
+    if (e.i !== li) { h += `<div class="dayhead">${esc(fSnap(S.model.snaps[e.i].meta))}</div>`; li = e.i; }
+    h += `<div class="ri" style="cursor:default"><span class="ri-main"><span style="font-weight:600">${esc(E.EVENT_TYPES[e.type])}</span></span><span class="ri-right">${evValue(e)}${e.delta != null ? dp(e.delta, e.field === 'sell' || e.field === 'rrp' || e.field === 'v7') : ''}</span></div>`;
+  }
+  h += `</div></section>`;
+  const twins = rowsNow.filter((x) => x.style === base.style && x.key !== key);
+  if (twins.length) h += `<section class="card"><header><h2>Stesso Style Code</h2></header><div class="list">${twins.map((t) => rowItem(t, qtyRight(t))).join('')}</div></section>`;
+  h += '</div>';
+  openSheet(base.style, () => { $('#sheetBody').innerHTML = h; });
+}
+
+/* ---------- vista: Report ---------- */
+function renderRep() {
+  let h = `<div class="view"><div class="lede"><h1>Report</h1><p>Carica il PDF di ogni giorno. I precedenti non vengono mai sovrascritti.</p></div>`;
+  h += `<section class="card"><header><h2>Nuovo report</h2></header><div class="import">`;
+  const p = S.pending;
+  if (!p) h += `<button class="btn primary" data-pick>Carica report PDF</button><span class="note" style="padding:0">Accetta il PDF "Not on Display" oppure un file di backup .json.</span>`;
+  else if (p.stage === 'parsing') h += `<span>Leggo ${esc(p.name)}… pagina ${p.page} di ${p.pages || '?'}</span><div class="bar"><i style="width:${p.pages ? 100 * p.page / p.pages : 5}%"></i></div>`;
+  else if (p.stage === 'error') h += `<div class="warnbox">${esc(p.msg)}</div><button class="btn" data-cancel>Chiudi</button>`;
+  else if (p.stage === 'saving') h += `<span>Salvo nello storico…</span><div class="bar"><i style="width:${p.pct}%"></i></div>`;
+  else if (p.stage === 'preview') {
+    const r = p.res, m = r.meta;
+    h += `<div><div style="font-family:var(--f-display);font-size:24px">${esc(fSnap({ completed: m.completed }))}</div><div class="note" style="padding:0">${esc(m.branch)} ${esc(m.branchName)} · Scan ${esc(m.scanId)} · ${esc(p.name)}</div></div>
+    <div class="checks">
+      <span class="${r.checks.rowsOk ? 'ok' : 'ko'}">${r.checks.rowsOk ? '✓' : '✗'} Righe lette: ${fN(r.checks.rows + r.checks.dummy)} su ${fN(m.declaredStyles)} dichiarate</span>
+      <span class="${r.checks.valueOk ? 'ok' : 'ko'}">${r.checks.valueOk ? '✓' : '✗'} Valore: ${fE(r.checks.value)} su ${fE(m.declaredValue)} dichiarati</span>
+      ${r.checks.dummy ? `<span class="note" style="padding:0">Esclusa ${r.checks.dummy} riga tecnica Returns/Vouchers.</span>` : ''}
+    </div>`;
+    if (r.warnings.length) h += `<div class="infobox">${r.warnings.slice(0, 5).map(esc).join('<br>')}${r.warnings.length > 5 ? `<br>…e altri ${r.warnings.length - 5}` : ''}</div>`;
+    if (p.dup) h += `<div class="warnbox">Questo report è già nello storico. Non lo salvo una seconda volta.</div><button class="btn" data-cancel>Chiudi</button>`;
+    else {
+      const ok = r.checks.rowsOk && r.checks.valueOk;
+      if (!ok) h += `<div class="warnbox">I controlli non tornano: alcuni dati potrebbero essere letti male. Salva solo se sei sicuro del file.</div>`;
+      h += `<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" data-save>${ok ? 'Salva nello storico' : 'Salva comunque'}</button><button class="btn" data-cancel>Annulla</button></div>`;
+    }
+  }
+  h += `</div></section>`;
+  const mode = { cloud: ['on', 'Storico salvato sul tuo account: lo ritrovi da ogni dispositivo.'], local: [Store.persisted ? 'on' : 'warn', Store.persisted ? 'Storico salvato su questo telefono, protetto dalla pulizia automatica. Esporta comunque un backup ogni settimana.' : 'Storico salvato su questo telefono. Esporta un backup ogni settimana: se cancelli i dati del browser lo perdi.'], memory: ['warn', 'Archivio non disponibile: i dati si perdono chiudendo la pagina.'] }[Store.mode];
+  h += `<div class="status"><span class="dot ${mode[0]}"></span>${mode[1]}</div>`;
+  const list = S.metas.slice().reverse();
+  h += `<section class="card"><header><h2>Storico</h2><span class="note" style="padding:0">${fN(list.length)} report</span></header><div class="list">`;
+  if (!list.length) h += `<div class="empty">Ancora nessun report.</div>`;
+  const first = S.metas.find((m) => m.branch === S.branch);
+  for (const m of list) {
+    const ok = m.checks && m.checks.rowsOk && m.checks.valueOk;
+    h += `<div class="snap"><div><b>${esc(fSnap(m))}</b>${first && first.id === m.id ? ' <span class="tag rep">giorno 1</span>' : ''}<div class="sub">${esc(m.branch)} · ${fN(m.rows)} righe · ${ef0.format(m.declaredValue || 0)} · ${ok ? '<span class="ok">controlli ok</span>' : '<span class="ko">controlli non superati</span>'}</div></div>
+      <div class="acts">${S.confirmDel === m.id ? `<button class="btn danger" data-delok="${esc(m.id)}">Elimina</button><button class="btn" data-delno>No</button>` : `<button class="btn ghost" data-del="${esc(m.id)}" aria-label="Elimina report">Elimina</button>`}</div></div>`;
+  }
+  h += `</div></section>`;
+  h += `<section class="card"><header><h2>Soglie</h2></header><div class="filters">
+    <div class="row2"><div class="field"><label for="sLow">Stock basso fino a (pz)</label><input id="sLow" inputmode="numeric" value="${settings.low}"></div>
+    <div class="field"><label for="sOld">Ultima vendita vecchia oltre (giorni)</label><input id="sOld" inputmode="numeric" value="${settings.oldDays}"></div></div>
+    <div class="row2"><div class="field"><label for="sBig">Cambio significativo da (pz)</label><input id="sBig" inputmode="numeric" value="${settings.bigAbs}"></div>
+    <div class="field"><label for="sPct">…oppure da (%)</label><input id="sPct" inputmode="numeric" value="${settings.bigPct}"></div></div>
+  </div></section>`;
+  h += `<section class="card"><header><h2>Backup</h2></header><div class="import"><p style="margin:0" class="note">Un file con tutti i report salvati. Salvalo su Drive, iCloud o inviatelo per email: per ripristinarlo, caricalo con il pulsante "Carica report PDF".</p><button class="btn" data-backup ${S.metas.length ? '' : 'disabled'}>Esporta backup</button></div></section>`;
+  h += `<section class="card"><header><h2>Come leggere i dati</h2></header><div class="import" style="font-size:13px;gap:8px">
+    <div>${tagR} Qty, prezzi, Price Type, taglie, ultima vendita e vendite 7gg sono letti dal PDF così come sono.</div>
+    <div>${tagC} Differenze, stock iniziale, sconti e stime vendite sono calcolati confrontando i report salvati.</div>
+    <div>TK = promo · NT = variazione di prezzo non promo · FULL = prezzo pieno (RRP vuoto).</div>
+    <div>Il report elenca solo articoli con stock: chi esce dal report può essere esaurito, trasferito o esposto.</div>
+    <div>Le taglie sono indicate solo quando restano 3 pezzi o meno.</div>
+  </div></section>`;
+  return h + '</div>';
+}
+
+/* ---------- import ---------- */
+let pdfjsReady = null;
+function loadPdfjs() {
+  if (pdfjsReady) return pdfjsReady;
+  pdfjsReady = new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = 'lib/pdf.min.js';
+    s.onload = () => { try { window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'lib/pdf.worker.min.js'; res(window.pdfjsLib); } catch (e) { rej(e); } };
+    s.onerror = () => { pdfjsReady = null; rej(new Error('Non riesco ad avviare il lettore PDF. Chiudi e riapri l\'app, poi riprova.')); };
+    document.head.appendChild(s);
+  });
+  return pdfjsReady;
+}
+const snapId = (m) => `${m.completed}_${m.scanId || '0'}`.replace(/[^A-Za-z0-9_\-.~:@+]/g, '-');
+
+async function handleFile(file) {
+  if (!file) return;
+  if (/\.json$/i.test(file.name) || file.type === 'application/json') return restoreBackup(file);
+  S.pending = { stage: 'parsing', name: file.name, page: 0, pages: 0 }; render();
+  try {
+    const lib = await loadPdfjs();
+    const data = new Uint8Array(await file.arrayBuffer());
+    const pdf = await lib.getDocument({ data, isEvalSupported: false, disableFontFace: true }).promise;
+    S.pending.pages = pdf.numPages;
+    let lastDraw = 0;
+    const res = await P.parseReport(pdf, lib.OPS, (pg, tot) => { S.pending.page = pg; if (Date.now() - lastDraw > 120 || pg === tot) { lastDraw = Date.now(); if (S.tab === 'rep') render(); } });
+    pdf.destroy && pdf.destroy();
+    if (!res.meta.completed || !res.rows.length) throw new Error('Questo PDF non sembra un report "Not on Display": non trovo la tabella degli articoli o la data del report.');
+    res.meta.id = snapId(res.meta);
+    S.pending = { stage: 'preview', name: file.name, res, dup: S.metas.some((m) => m.id === res.meta.id) };
+  } catch (e) {
+    S.pending = { stage: 'error', msg: e.message || 'Errore nella lettura del PDF.' };
+  }
+  render();
+}
+
+async function savePending() {
+  const res = S.pending.res;
+  const m = res.meta;
+  const meta = { id: m.id, completed: m.completed, scanId: m.scanId, branch: m.branch, branchName: m.branchName, declaredStyles: m.declaredStyles, declaredValue: m.declaredValue, scanned: m.scanned, checks: res.checks, warnings: res.warnings.slice(0, 20) };
+  S.pending = { stage: 'saving', pct: 5 }; render();
+  try {
+    await Store.save(meta, res.rows.map(E.pack), (i, n) => { S.pending.pct = Math.round(100 * i / n); render(); });
+    S.pending = null; S.branch = m.branch;
+    await loadAll();
+    S.idx = S.model.snaps.findIndex((s) => s.meta.id === m.id);
+    renderSnapSel();
+    toast(`Report del ${fD(m.completed)} salvato nello storico`);
+    setTab('dash');
+  } catch (e) {
+    S.pending = { stage: 'error', msg: e && e.code === 'quota_exceeded' ? 'Spazio di archiviazione pieno: elimina qualche report vecchio dopo averne esportato il backup.' : 'Salvataggio non riuscito: ' + (e.message || e.code || 'errore sconosciuto') + '. Riprova.' };
+    render();
+  }
+}
+
+async function exportBackup() {
+  try {
+    const snaps = [];
+    for (const m of S.metas) snaps.push({ meta: m, rows: await Store.loadRows(m) });
+    const today = new Date().toISOString().slice(0, 10);
+    const name = `storico-stock-${today}.json`;
+    const blob = new Blob([JSON.stringify({ app: 'stock-not-on-display', version: 1, cols: E.COLS, snaps })], { type: 'application/json' });
+    const file = typeof File === 'function' ? new File([blob], name, { type: 'application/json' }) : null;
+    if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: 'Backup storico stock' });
+      return;
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    toast('Backup scaricato: ' + name);
+  } catch (e) { if (e && e.name !== 'AbortError') toast('Backup non riuscito: ' + (e.message || 'errore')); }
+}
+
+async function restoreBackup(file) {
+  try {
+    const j = JSON.parse(await file.text());
+    if (!j || j.app !== 'stock-not-on-display' || !Array.isArray(j.snaps)) throw new Error('Il file non è un backup di questa app.');
+    let added = 0;
+    for (const s of j.snaps) {
+      if (!s.meta || !s.meta.id || S.metas.some((m) => m.id === s.meta.id)) continue;
+      const { parts, rows, cols, importedAt, ...meta } = s.meta;
+      await Store.save(meta, s.rows); added++;
+    }
+    await loadAll();
+    toast(added ? `Ripristinati ${added} report` : 'Tutti i report del backup erano già presenti');
+    render();
+  } catch (e) { S.pending = { stage: 'error', msg: e.message || 'Backup non leggibile.' }; render(); }
+}
+
+/* ---------- foglio ---------- */
+let sheetMore = null;
+const sheetStack = [];
+function openSheet(title, draw) {
+  if (!$('#sheet').hidden && sheetStack.length) sheetStack[sheetStack.length - 1].scroll = $('#sheetBody').scrollTop;
+  else sheetStack.length = 0;
+  sheetStack.push({ title, draw, more: null });
+  showTop(0);
+}
+function showTop(scroll) {
+  const top = sheetStack[sheetStack.length - 1];
+  $('#sheetTitle').textContent = top.title; sheetMore = null; top.draw();
+  if (sheetMore) top.more = sheetMore; else sheetMore = top.more;
+  $('#sheet').hidden = false; $('#sheetBody').scrollTop = scroll || 0;
+}
+function closeSheet() { $('#sheet').hidden = true; sheetStack.length = 0; }
+function backSheet() { sheetStack.pop(); if (!sheetStack.length) return closeSheet(); showTop(sheetStack[sheetStack.length - 1].scroll); }
+
+/* ---------- render e interazioni ---------- */
+function render() {
+  const main = $('#main');
+  const st = main.scrollTop;
+  const views = { dash: renderDash, var: renderVar, art: renderArt, rep: renderRep };
+  main.innerHTML = views[S.tab]();
+  main.scrollTop = st;
+}
+function setTab(t) {
+  S.tab = t;
+  document.querySelectorAll('.tabs button').forEach((b) => b.setAttribute('aria-current', b.dataset.tab === t ? 'page' : 'false'));
+  render(); $('#main').scrollTop = 0;
+}
+
+document.addEventListener('click', (ev) => {
+  const t = ev.target.closest('button, [data-open]');
+  if (!t) return;
+  const d = t.dataset;
+  if (d.tab) return setTab(d.tab);
+  if (d.open) return openItem(d.open);
+  if (d.dash) { const [s, l] = d.dash.split(':'); S.dashSel[s] = l; return render(); }
+  if (d.all) { const [s, l] = d.all.split(':'); return openAll(s, l); }
+  if (d.sheetmore !== undefined) return sheetMore && sheetMore();
+  if (d.pick !== undefined) { $('#fileIn').value = ''; return $('#fileIn').click(); }
+  if (d.cancel !== undefined) { S.pending = null; return render(); }
+  if (d.save !== undefined) return savePending();
+  if (d.del) { S.confirmDel = d.del; return render(); }
+  if (d.delno !== undefined) { S.confirmDel = null; return render(); }
+  if (d.delok) {
+    const m = S.metas.find((x) => x.id === d.delok);
+    S.confirmDel = null;
+    if (m) Store.remove(m).then(() => loadAll()).then(() => { toast(`Report del ${fD(m.completed)} eliminato`); render(); }).catch((e) => toast('Eliminazione non riuscita: ' + (e.message || e.code)));
+    return;
+  }
+  if (d.backup !== undefined) return exportBackup();
+  if (d.evt) { S.ev.types.has(d.evt) ? S.ev.types.delete(d.evt) : S.ev.types.add(d.evt); S.ev.limit = 200; return render(); }
+  if (d.artmore !== undefined && $('#artBody')) { S.art.limit += 60; $('#artBody').innerHTML = artBody(); return; }
+  if (d.evall) {
+    S.ev.types = d.evall === '1' ? new Set(Object.keys(E.EVENT_TYPES)) : d.evall === '0' ? new Set() : new Set(['qty_su', 'qty_giu', 'zero', 'scomparso', 'nuovo', 'tornato', 'promo', 'varprezzo', 'full', 'ptype', 'prezzo']);
+    return render();
+  }
+  if (d.evmore !== undefined) { S.ev.limit += 200; return render(); }
+  if (d.artmore !== undefined) { S.art.limit += 60; return render(); }
+  if (d.togglefilters !== undefined) { S.art.showFilters = !S.art.showFilters; return render(); }
+  if (d.clearfilters !== undefined) { Object.assign(S.art, { brand: '', gender: '', ptype: '', qmin: '', qmax: '', u7min: '', lastOld: '', onlyNew: false }); return render(); }
+});
+
+let inputT = null;
+document.addEventListener('input', (ev) => {
+  const id = ev.target.id;
+  const v = ev.target.value;
+  const later = (fn) => { clearTimeout(inputT); inputT = setTimeout(fn, 220); };
+  if (id === 'artQ') return later(() => { S.art.q = v; S.art.limit = 60; const b = $('#artBody'); if (b) b.innerHTML = artBody(); });
+  if (id === 'evQ') return later(() => { S.ev.q = v; S.ev.limit = 200; const b = $('#evBody'); if (b) b.innerHTML = evBody(); });
+  const setMap = { sLow: 'low', sOld: 'oldDays', sBig: 'bigAbs', sPct: 'bigPct' };
+  if (setMap[id]) { const n = parseInt(v, 10); if (n >= 0) { settings[setMap[id]] = n; saveSettings(); } }
+});
+document.addEventListener('change', (ev) => {
+  const id = ev.target.id, v = ev.target.value;
+  if (id === 'snapSel') { S.idx = +v; S.ev.to = null; S.ev.from = null; closeSheet(); return render(); }
+  if (id === 'branchSel') { S.branch = v; return loadAll().then(render); }
+  if (id === 'fileIn') return handleFile(ev.target.files[0]);
+  if (id === 'evFrom') { S.ev.from = +v; return render(); }
+  if (id === 'evTo') { S.ev.to = +v; if (S.ev.from >= S.ev.to) S.ev.from = S.ev.to - 1; return render(); }
+  if (id === 'artSort') { S.art.sort = v; return render(); }
+  const selMap = { fBrand: 'brand', fGender: 'gender', fPtype: 'ptype', fLast: 'lastOld' };
+  if (selMap[id]) { S.art[selMap[id]] = v; S.art.limit = 60; return render(); }
+  if (id === 'fNew') { S.art.onlyNew = v === '1'; return render(); }
+  const numMap = { fQmin: 'qmin', fQmax: 'qmax', fU7: 'u7min' };
+  if (numMap[id]) { S.art[numMap[id]] = v.replace(/[^0-9]/g, ''); S.art.limit = 60; return render(); }
+  if (['sLow', 'sOld', 'sBig', 'sPct'].includes(id)) { sumCache.k = null; toast('Soglie aggiornate'); }
+});
+$('#sheetBack').addEventListener('click', backSheet);
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#sheet').hidden) backSheet(); });
+
+
+/* ---------- avvio ---------- */
+(async function boot() {
+  try {
+    await Store.init();
+    $('#bootMsg').textContent = Store.mode === 'cloud' ? 'Carico lo storico dal tuo account…' : 'Carico lo storico…';
+    await loadAll();
+  } catch (e) {
+    toast('Non riesco a leggere lo storico: ' + (e.message || e.code || 'errore') + '. Riapri la pagina.');
+  }
+  render();
+})();
+})();
+</script>
+<script>
+if ('serviceWorker' in navigator) window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
+</script>
+</body>
+</html>
