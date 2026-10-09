@@ -2,7 +2,7 @@
 <html lang="it">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#F2C230">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -49,6 +49,9 @@ img { max-width: 100%; }
 html, body { height: 100%; }
 body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 14px; line-height: 1.4; -webkit-tap-highlight-color: transparent; }
 button, input, select { font: inherit; color: inherit; }
+/* niente zoom con il doppio tocco; campi a 16px così iPhone non ingrandisce la pagina quando li tocchi */
+*, *::before, *::after { touch-action: manipulation; }
+input, select, textarea { font-size: 16px !important; }
 button { cursor: pointer; }
 :focus-visible { outline: 2px solid var(--calc); outline-offset: 2px; }
 .mono { font-family: var(--f-mono); }
@@ -59,7 +62,7 @@ button { cursor: pointer; }
 .brandmark { display: flex; align-items: baseline; gap: 6px; flex: 0 0 auto; }
 .brandmark b { font-family: var(--f-display); font-size: 22px; letter-spacing: .02em; line-height: 1; }
 .brandmark span { font-family: var(--f-mono); font-size: 11px; background: var(--label); color: var(--label-ink); padding: 2px 5px; border-radius: 3px; }
-.top select { flex: 1 1 auto; min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 7px 8px; font-size: 13px; }
+.top select { flex: 1 1 auto; min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }
 main { flex: 1 1 auto; overflow-y: auto; padding-inline: 16px; padding-block: 14px calc(84px + env(safe-area-inset-bottom, 0px)); }
 .view { display: flex; flex-direction: column; gap: 14px; max-width: 760px; margin-inline: auto; }
 
