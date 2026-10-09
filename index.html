@@ -213,7 +213,7 @@ main { flex: 1 1 auto; overflow-y: auto; padding-inline: 16px; padding-block: 14
   <div class="sheet-top"><button class="back" id="sheetBack" aria-label="Indietro"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 5l-7 7 7 7"/></svg></button><h2 id="sheetTitle"></h2></div>
   <div class="sheet-body" id="sheetBody"></div>
 </section>
-<input type="file" id="fileIn" accept="application/pdf,.pdf,application/json,.json" hidden>
+<input type="file" id="fileIn" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/pdf,.pdf,application/json,.json" multiple hidden>
 <div class="toast" id="toast" hidden role="status"></div>
 
 <script>
@@ -467,12 +467,12 @@ main { flex: 1 1 auto; overflow-y: auto; padding-inline: 16px; padding-block: 14
 // Motore storico: confronta snapshot consecutivi e genera eventi.
 // Distingue i DATI DEL REPORT (campi letti dal PDF) dai CALCOLI (differenze, stime).
 (function (root) {
-  const COLS = ['key', 'gender', 'brand', 'desc', 'style', 'rrp', 'sell', 'ptype', 'qty', 'frag', 'last', 'u7', 'v7', 'launch'];
+  const COLS = ['key', 'gender', 'brand', 'desc', 'style', 'rrp', 'sell', 'ptype', 'qty', 'frag', 'last', 'u7', 'v7', 'launch', 'loc', 'gcode'];
   const pack = (r) => COLS.map((c) => r[c] ?? '');
   const unpack = (a) => {
     const r = {};
-    COLS.forEach((c, i) => { r[c] = a[i]; });
-    r.barcode = String(r.key).replace(/#\d+$/, '');
+    COLS.forEach((c, i) => { r[c] = a[i] ?? ''; });
+    r.barcode = String(r.key).includes('|') ? '' : String(r.key).replace(/#\d+$/, '');
     return r;
   };
 
@@ -652,9 +652,174 @@ main { flex: 1 1 auto; overflow-y: auto; padding-inline: 16px; padding-block: 14
 
 </script>
 <script>
+// Lettura degli export Excel "Items Not on Display" e "Condensed List".
+// Il Condensed List contiene da solo tessile, calzature e accessori.
+(function (root) {
+  const GENDER = {
+    A: 'Mens Textiles', B: 'Mens Textiles', C: 'Replica Textiles', D: 'Womens Textiles', E: 'Junior Textiles', F: 'Infant Textiles',
+    G: 'Accessories',
+    K: 'Mens Footwear', L: 'Womens Footwear', M: 'Junior Footwear', N: 'Childrens Footwear', O: 'Infant Footwear',
+  };
+  const PART_OF = { A: 'T', B: 'T', C: 'T', D: 'T', E: 'T', F: 'T', G: 'A', K: 'F', L: 'F', M: 'F', N: 'F', O: 'F' };
+  const PART_NAME = { T: 'Tessile', F: 'Calzature', A: 'Accessori' };
+  const MONTHS = { JAN: 1, FEB: 2, MAR: 3, APR: 4, MAY: 5, JUN: 6, JUL: 7, AUG: 8, SEP: 9, OCT: 10, NOV: 11, DEC: 12 };
+  const pad = (n) => String(n).padStart(2, '0');
+  const COLMAP = {
+    gender: /^gender$/i, brand: /^brand$/i, desc: /^description$/i, style: /^style( code)?$/i,
+    rrp: /^rrp/i, sell: /^sell/i, ptype: /full\/tk\/nt|price type/i, qty: /^qty$/i,
+    last: /^last sales? date/i, u7: /^sales units/i, v7: /^sales value/i, launch: /^launch/i,
+  };
+
+  function excelDate(v) {
+    if (v == null || v === '') return '';
+    if (typeof v === 'number') { // numero seriale Excel
+      const d = new Date(Math.round((v - 25569) * 86400000));
+      return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+    }
+    if (v instanceof Date) return `${v.getFullYear()}-${pad(v.getMonth() + 1)}-${pad(v.getDate())}`;
+    const s = String(v).trim();
+    let m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(s);
+    if (m) return `${m[3]}-${pad(+m[2])}-${pad(+m[1])}`;
+    m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+    if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+    return '';
+  }
+  const num = (v) => { if (typeof v === 'number') return v; const n = parseFloat(String(v ?? '').replace(',', '.').replace(/[^0-9.\-]/g, '')); return isFinite(n) ? n : 0; };
+  const str = (v) => (v == null ? '' : String(v)).replace(/\s+/g, ' ').trim();
+
+  // aoa: righe del primo foglio come array di array
+  function parseSheet(aoa, filename) {
+    const warnings = [];
+    let hdrRow = aoa.findIndex((r) => r && r.some((c) => /^gender$/i.test(str(c))) && r.some((c) => /^style/i.test(str(c))));
+    if (hdrRow < 0) return { error: `${filename}: non trovo le colonne Gender e Style. Non sembra un export Not on Display.` };
+    const titleRow = (aoa.slice(0, hdrRow).find((r) => r && r.some((c) => /Date:/i.test(str(c)))) || []).map(str);
+    const title = str(titleRow[0] || (aoa[0] || [])[0]);
+    const dRaw = (titleRow.find((c) => /^Date:/i.test(c)) || '').replace(/^Date:/i, '').trim();
+    const tRaw = (titleRow.find((c) => /^Time:/i.test(c)) || '').replace(/^Time:/i, '').trim();
+    const bRaw = (titleRow.find((c) => /^Branch:/i.test(c)) || '').replace(/^Branch:/i, '').trim();
+    const dm = /^(\d{1,2})([A-Z]{3})(\d{2,4})$/i.exec(dRaw);
+    const date = dm && MONTHS[dm[2].toUpperCase()] ? `${dm[3].length === 2 ? 2000 + +dm[3] : dm[3]}-${pad(MONTHS[dm[2].toUpperCase()])}-${pad(+dm[1])}` : null;
+    const time = /^\d{1,2}:\d{2}$/.test(tRaw) ? tRaw.padStart(5, '0') : '00:00';
+    const hdr = aoa[hdrRow].map(str);
+    const col = {};
+    for (const [k, re] of Object.entries(COLMAP)) col[k] = hdr.findIndex((h) => re.test(h));
+    const locCols = hdr.map((h, i) => (/^location/i.test(h) ? i : -1)).filter((i) => i >= 0);
+    const missing = ['gender', 'style', 'qty', 'sell'].filter((k) => col[k] < 0);
+    if (missing.length) return { error: `${filename}: mancano le colonne ${missing.join(', ')}.` };
+    const rows = []; const unknown = new Set(); const parts = new Set();
+    for (const r of aoa.slice(hdrRow + 1)) {
+      if (!r || !str(r[col.style])) continue;
+      const code = str(r[col.gender]).toUpperCase();
+      if (!GENDER[code]) unknown.add(code); else parts.add(PART_OF[code]);
+      const g = (k) => (col[k] >= 0 ? r[col[k]] : '');
+      rows.push({
+        gcode: code,
+        gender: GENDER[code] || `Codice ${code}`,
+        brand: str(g('brand')), desc: str(g('desc')), style: str(g('style')),
+        rrp: num(g('rrp')), sell: num(g('sell')), ptype: str(g('ptype')).toUpperCase(), qty: num(g('qty')),
+        last: excelDate(g('last')), u7: num(g('u7')), v7: Math.round(num(g('v7')) * 100) / 100, launch: excelDate(g('launch')),
+        loc: locCols.map((i) => str(r[i])).filter(Boolean).join(', '),
+        frag: '',
+      });
+    }
+    if (unknown.size) warnings.push(`Codici reparto non riconosciuti: ${[...unknown].join(', ')}`);
+    const kind = /condensed/i.test(title) || /condensed/i.test(filename) ? 'condensed' : 'part';
+    return { kind, title, date, time, branch: bRaw, rows, parts: [...parts], warnings, filename };
+  }
+
+  // Unisce righe con stesso reparto e Style Code (es. due linee prezzo dello stesso articolo)
+  function consolidate(rows) {
+    const map = new Map(); const order = [];
+    for (const r of rows) {
+      const key = `${r.gcode}|${r.style}`;
+      const prev = map.get(key);
+      if (!prev) { map.set(key, { ...r, key, lines: 1, mainQty: r.qty }); order.push(key); continue; }
+      prev.lines++;
+      if (r.qty > prev.mainQty) Object.assign(prev, { rrp: r.rrp, sell: r.sell, ptype: r.ptype, mainQty: r.qty, desc: r.desc });
+      prev.qty += r.qty; prev.u7 += r.u7; prev.v7 = Math.round((prev.v7 + r.v7) * 100) / 100;
+      if (r.last > prev.last) prev.last = r.last;
+      if (r.loc) prev.loc = [...new Set((prev.loc ? prev.loc.split(', ') : []).concat(r.loc.split(', ')))].join(', ');
+    }
+    return order.map((k) => { const x = map.get(k); delete x.mainQty; return x; });
+  }
+
+  // Taglie dal PDF (facoltativo): il PDF le elenca solo fino a 3 pezzi
+  function attachSizes(rows, pdfRows) {
+    // le uso solo se i pezzi per taglia tornano con la quantità dell'Excel
+    const idx = new Map();
+    for (const p of pdfRows || []) {
+      const k = `${p.gender}|${p.style.replace(/\s+/g, '').toUpperCase()}`;
+      const e = idx.get(k) || { frag: [], qty: 0, all: true };
+      e.qty += p.qty; if (p.frag) e.frag.push(p.frag); else e.all = false;
+      idx.set(k, e);
+    }
+    let n = 0, partial = 0;
+    for (const r of rows) {
+      const e = idx.get(`${r.gender}|${r.style.replace(/\s+/g, '').toUpperCase()}`);
+      if (!e || !e.frag.length) continue;
+      if (e.all && e.qty === r.qty) { r.frag = e.frag.join(', '); n++; } else partial++;
+    }
+    rows.partialSizes = partial;
+    return n;
+  }
+
+  // sheets: risultati di parseSheet; pdf: risultato del parser PDF (facoltativo)
+  function combine(sheets, pdf) {
+    const errors = sheets.filter((s) => s.error).map((s) => s.error);
+    const ok = sheets.filter((s) => !s.error);
+    if (!ok.length) return { error: errors.join(' ') || 'Nessun file Excel valido.' };
+    const condensed = ok.find((s) => s.kind === 'condensed');
+    const used = condensed ? [condensed] : ok;
+    const ignored = condensed ? ok.filter((s) => s !== condensed).map((s) => s.filename) : [];
+    const dates = [...new Set(used.map((s) => s.date))];
+    const branches = [...new Set(used.map((s) => s.branch))];
+    const warnings = [...errors, ...used.flatMap((s) => s.warnings)];
+    if (dates.length > 1) return { error: `I file sono di giorni diversi (${dates.join(', ')}). Carica i file dello stesso giorno.` };
+    if (branches.length > 1) return { error: `I file sono di negozi diversi (${branches.join(', ')}).` };
+    const parts = new Set(used.flatMap((s) => s.parts));
+    const missingParts = ['T', 'F', 'A'].filter((p) => !parts.has(p)).map((p) => PART_NAME[p]);
+    const rows = consolidate(used.flatMap((s) => s.rows));
+    let sizes = 0;
+    const pdfSameDay = pdf && pdf.rows && pdf.meta && pdf.meta.completed && dates[0] && pdf.meta.completed.slice(0, 10) === dates[0];
+    if (pdfSameDay) sizes = attachSizes(rows, pdf.rows);
+    const time = used.map((s) => s.time).sort().pop();
+    const meta = {
+      source: 'xlsx', kind: condensed ? 'condensed' : 'parts',
+      completed: dates[0] ? `${dates[0]}T${time}` : null,
+      branch: branches[0] || '', branchName: '',
+      files: used.map((s) => s.filename), ignored,
+      sizesFromPdf: sizes, sizesSkipped: rows.partialSizes || 0, pdfDate: pdf && pdf.meta ? pdf.meta.completed : null,
+    };
+    if (pdf && pdf.meta && pdf.meta.branchName && pdf.meta.branch === meta.branch) meta.branchName = pdf.meta.branchName;
+    const value = Math.round(rows.reduce((s, r) => s + r.qty * r.sell, 0) * 100) / 100;
+    const checks = { complete: missingParts.length === 0, missingParts, rows: rows.length, value, qty: rows.reduce((s, r) => s + r.qty, 0), dateOk: !!meta.completed };
+    if (pdf && pdf.meta && pdf.meta.completed && dates[0] && pdf.meta.completed.slice(0, 10) !== dates[0]) warnings.push(`Il PDF per le taglie è del ${pdf.meta.completed.slice(0, 10)}, gli Excel del ${dates[0]}: taglie non usate.`);
+    return { meta, rows, checks, warnings };
+  }
+
+  // Legge il primo foglio di una cartella SheetJS. Questi export dichiarano un'area
+  // più piccola di quella reale: la ricalcolo dalle celle presenti.
+  function sheetRows(XLSX, wb) {
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    let maxR = 0, maxC = 0;
+    for (const k of Object.keys(ws)) {
+      if (k[0] === '!') continue;
+      const c = XLSX.utils.decode_cell(k);
+      if (c.r > maxR) maxR = c.r; if (c.c > maxC) maxC = c.c;
+    }
+    ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: maxR, c: maxC } });
+    return XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
+  }
+
+  const api = { parseSheet, combine, consolidate, attachSizes, sheetRows, GENDER };
+  if (typeof module !== 'undefined') module.exports = api; else root.NODXlsx = api;
+})(this);
+
+</script>
+<script>
 (function () {
 'use strict';
-const E = window.NODEngine, P = window.NODParser;
+const E = window.NODEngine, P = window.NODParser, XP = window.NODXlsx;
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const nf = new Intl.NumberFormat('it-IT');
@@ -788,7 +953,7 @@ function enrich(r) {
 const S = {
   metas: [], branch: null, model: null, idx: -1, tab: 'dash',
   dashSel: { stock: 'up', sales: 'top', prices: 'promo', news: 'nuovi' },
-  art: { q: '', brand: '', dept: '', cat: '', size: '', ptype: '', qmin: '', qmax: '', u7min: '', lastOld: '', onlyNew: false, sort: 'qty', limit: 60, showFilters: false },
+  art: { q: '', brand: '', dept: '', cat: '', size: '', loc: '', ptype: '', qmin: '', qmax: '', u7min: '', lastOld: '', onlyNew: false, sort: 'qty', limit: 60, showFilters: false },
   ev: { from: null, to: null, types: null, q: '', limit: 200 },
   pending: null, confirmDel: null, busy: false,
 };
@@ -809,12 +974,13 @@ function toast(msg) {
 /* ---------- caricamento ---------- */
 async function loadAll(keepIdx) {
   S.metas = (await Store.listMeta()).filter((m) => m && m.id && m.completed).sort((a, b) => a.completed.localeCompare(b.completed));
-  const branches = [...new Set(S.metas.map((m) => m.branch))];
-  if (!S.branch || !branches.includes(S.branch)) S.branch = S.metas.length ? S.metas[S.metas.length - 1].branch : null;
+  const active = S.metas.filter((m) => m.source === 'xlsx');
+  const branches = [...new Set(active.map((m) => m.branch))];
+  if (!S.branch || !branches.includes(S.branch)) S.branch = active.length ? active[active.length - 1].branch : null;
   const bs = $('#branchSel');
   bs.hidden = branches.length < 2;
-  bs.innerHTML = branches.map((b) => { const m = S.metas.find((x) => x.branch === b); return `<option value="${esc(b)}"${b === S.branch ? ' selected' : ''}>${esc(b)} ${esc(m.branchName || '')}</option>`; }).join('');
-  const mine = S.metas.filter((m) => m.branch === S.branch);
+  bs.innerHTML = branches.map((b) => { const m = active.find((x) => x.branch === b); return `<option value="${esc(b)}"${b === S.branch ? ' selected' : ''}>${esc(b)} ${esc(m.branchName || '')}</option>`; }).join('');
+  const mine = active.filter((m) => m.branch === S.branch);
   const snaps = [];
   let done = 0;
   for (const m of mine) {
@@ -849,6 +1015,7 @@ function dp(d, money) {
   return `<span class="dp ${cls}">${d > 0 ? '+' : d < 0 ? '−' : '±'}${v}</span>`;
 }
 const pt = (t) => t ? `<span class="pt ${esc(t)}">${esc(t)}</span>` : '';
+const discTxt = (d) => d == null || d === 0 ? (d === 0 ? '0%' : '—') : d > 0 ? d + '%' : `aumento ${-d}%`;
 function rowItem(r, right) {
   return `<button class="ri" data-open="${esc(r.key)}"><span class="ri-main"><span class="code">${esc(r.style)}</span><span class="ri-sub">${esc(r.desc)}</span><span class="ri-sub">${esc(r.brand)} · ${esc(r.gender)}</span></span><span class="ri-right">${right}</span></button>`;
 }
@@ -897,8 +1064,8 @@ function itemFor(def, x) { return def[4] ? rowItem(x, def[4](x)) : evItem(x, fal
 
 function emptyState() {
   return `<div class="view"><div class="lede"><h1>Nessun report nello storico</h1></div>
-  <div class="card"><div class="import"><p style="margin:0">Carica il primo PDF <b>Not on Display</b>: diventerà il Giorno 1. Ogni report successivo verrà confrontato con i precedenti.</p>
-  <button class="btn primary" data-pick>Carica report PDF</button></div></div></div>`;
+  <div class="card"><div class="import"><p style="margin:0">Carica il <b>Condensed List</b> in Excel: diventerà il Giorno 1. Ogni report successivo verrà confrontato con i precedenti.</p>
+  <button class="btn primary" data-pick>Carica Condensed List</button></div></div></div>`;
 }
 
 function renderDash() {
@@ -911,7 +1078,7 @@ function renderDash() {
   const kpi = (label, val, sub, calc, tag) => `<div class="kpi${calc ? ' c' : ''}"><div class="k"><span>${label}</span>${tag}</div><div class="v">${val}</div><div class="s">${sub || ''}</div></div>`;
   let h = `<div class="view">
   <div class="lede"><h1>${S.idx === 0 ? 'Giorno 1' : 'Report del ' + fD(s.meta.completed)}</h1><p>${esc(s.meta.branchName || '')} · ${esc(fSnap(s.meta))}${prev ? ` · confronto con ${fD(prev.completed)}` : ' · base dello storico'}</p></div>
-  <div class="legend">${tagR} letto dal PDF ${tagC} ricavato confrontando i report</div>
+  <div class="legend">${tagR} letto dal report ${tagC} ricavato confrontando i report</div>
   <div class="kpis">
     ${kpi('Stock totale', fN(s.stock.qty), dQty != null ? `${dp(dQty)} da ieri` : 'pezzi', false, tagR)}
     ${kpi('Valore stock', ef0.format(s.stock.value), dVal != null ? `${dp(dVal, true)}` : 'qty × prezzo vendita', false, tagR)}
@@ -1009,7 +1176,7 @@ function evBody() {
 function renderArt() {
   if (!S.model) return emptyState();
   const a = S.art;
-  return `<div class="view"><div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><input id="artQ" type="search" value="${esc(a.q)}" placeholder="Style Code, anche più codici: ABC123 + DEF456" autocomplete="off" autocapitalize="characters" aria-label="Cerca"></div><div id="artBody" class="view">${artBody()}</div></div>`;
+  return `<div class="view"><div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><input id="artQ" type="search" value="${esc(a.q)}" placeholder="Style Code, descrizione o ubicazione; più codici: A1 + B2" autocomplete="off" autocapitalize="characters" aria-label="Cerca"></div><div id="artBody" class="view">${artBody()}</div></div>`;
 }
 function artBody() {
   const s = summ(); const a = S.art;
@@ -1031,7 +1198,7 @@ function artBody() {
   }
   // ogni elenco a tendina mostra solo le voci compatibili con gli altri filtri principali
   const pass = (r, skip) => (
-    (tokens.length !== 1 || norm(r.style).includes(tokens[0]) || norm(r.desc).includes(tokens[0]) || norm(r.barcode).includes(tokens[0])) &&
+    (tokens.length !== 1 || norm(r.style).includes(tokens[0]) || norm(r.desc).includes(tokens[0]) || (r.barcode && norm(r.barcode).includes(tokens[0])) || (r.loc && norm(r.loc).includes(tokens[0]))) &&
     (skip === 'dept' || !a.dept || r.dept === a.dept) && (skip === 'cat' || !a.cat || r.cat === a.cat) &&
     (skip === 'brand' || !a.brand || r.brand === a.brand) && (skip === 'size' || !a.size || r.sizes.some((z) => z.z === a.size)));
   const countBy = (skip, keyFn) => { const m = new Map(); rows.forEach((r) => { if (pass(r, skip)) for (const k of keyFn(r)) m.set(k, (m.get(k) || 0) + 1); }); return m; };
@@ -1046,6 +1213,7 @@ function artBody() {
     if (a.qmin !== '' && r.qty < +a.qmin) return false;
     if (a.qmax !== '' && r.qty > +a.qmax) return false;
     if (a.u7min !== '' && r.u7 < +a.u7min) return false;
+    if (a.loc && !(r.loc || '').split(', ').some((l) => l.startsWith(a.loc))) return false;
     if (a.lastOld === 'none' && r.last) return false;
     if (a.lastOld && a.lastOld !== 'none' && !(r.calc.daysSinceSale > +a.lastOld)) return false;
     if (a.onlyNew && !r.calc.isNew) return false;
@@ -1059,7 +1227,7 @@ function artBody() {
   };
   f.sort(sorts[a.sort] || sorts.qty);
   const mainActive = ['dept', 'cat', 'brand', 'size'].filter((k) => a[k] !== '').length;
-  const active = ['ptype', 'qmin', 'qmax', 'u7min', 'lastOld'].filter((k) => a[k] !== '').length + (a.onlyNew ? 1 : 0);
+  const active = ['ptype', 'qmin', 'qmax', 'u7min', 'lastOld', 'loc'].filter((k) => a[k] !== '').length + (a.onlyNew ? 1 : 0);
   const o = (v, l, cur) => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${esc(l)}</option>`;
   const opts = (map, cur, order) => { const keys = [...map.keys()]; if (cur && !map.has(cur)) keys.push(cur); keys.sort(order || ((x, y) => x.localeCompare(y))); return keys.map((k) => o(k, `${k} (${fN(map.get(k) || 0)})`, cur)).join(''); };
   const byDept = (x, y) => DEPT_ORDER.indexOf(x) - DEPT_ORDER.indexOf(y);
@@ -1067,8 +1235,9 @@ function artBody() {
     <div class="row2"><div class="field"><label for="fDept">Reparto</label><select id="fDept">${o('', 'Tutti', a.dept)}${opts(deptC, a.dept, byDept)}</select></div>
     <div class="field"><label for="fCat">Categoria</label><select id="fCat">${o('', 'Tutte', a.cat)}${opts(catC, a.cat)}</select></div></div>
     <div class="row2"><div class="field"><label for="fBrand">Brand</label><select id="fBrand">${o('', 'Tutti', a.brand)}${opts(brandC, a.brand)}</select></div>
-    <div class="field"><label for="fSize">Taglia disponibile</label><select id="fSize">${o('', 'Tutte', a.size)}${opts(sizeC, a.size, sizeCmp)}</select></div></div>
-    ${a.size ? `<p class="note" style="padding:0">Il report indica le taglie solo per gli articoli con 3 pezzi o meno: qui vedi quelli che hanno ancora la taglia ${esc(a.size)}. Tra parentesi nell'elenco i pezzi disponibili.</p>` : ''}
+    <div class="field"><label for="fSize">Taglia disponibile</label>${sizeC.size || a.size ? `<select id="fSize">${o('', 'Tutte', a.size)}${opts(sizeC, a.size, sizeCmp)}</select>` : `<select id="fSize" disabled><option>Nessuna taglia</option></select>`}</div></div>
+    ${!sizeC.size && !a.size ? '<p class="note" style="padding:0">Per filtrare per taglia, carica il PDF Not on Display insieme al Condensed List dello stesso giorno.</p>' : ''}
+    ${a.size ? `<p class="note" style="padding:0">Le taglie arrivano dal PDF caricato insieme all'Excel, che le indica solo per gli articoli con 3 pezzi o meno: qui vedi quelli che hanno ancora la taglia ${esc(a.size)}. Tra parentesi nell'elenco i pezzi disponibili.</p>` : ''}
     ${mainActive ? '<button class="btn" data-clearmain>Azzera reparto, categoria, brand e taglia</button>' : ''}
   </div>
   <header style="padding-top:0"><button class="btn ghost" data-togglefilters style="padding-inline:0;border:0">Altri filtri${active ? ` (${active})` : ''} ${a.showFilters ? '▴' : '▾'}</button>
@@ -1081,6 +1250,7 @@ function artBody() {
       <div class="field"><label for="fLast">Ultima vendita</label><select id="fLast">${o('', 'Qualsiasi', a.lastOld)}${o('30', 'Più di 30 giorni fa', a.lastOld)}${o('60', 'Più di 60 giorni fa', a.lastOld)}${o('90', 'Più di 90 giorni fa', a.lastOld)}${o('180', 'Più di 180 giorni fa', a.lastOld)}${o('none', 'Nessuna data nel report', a.lastOld)}</select></div></div>
       <div class="row2"><div class="field"><label for="fQmin">Stock da</label><input id="fQmin" inputmode="numeric" value="${esc(a.qmin)}" placeholder="0"></div>
       <div class="field"><label for="fQmax">Stock fino a</label><input id="fQmax" inputmode="numeric" value="${esc(a.qmax)}" placeholder="∞"></div></div>
+      <div class="field"><label for="fLoc">Ubicazione (anche solo l'inizio del codice)</label><input id="fLoc" inputmode="numeric" value="${esc(a.loc)}" placeholder="es. 12901"></div>
       <div class="row2"><div class="field"><label for="fU7">Vendite 7gg almeno</label><input id="fU7" inputmode="numeric" value="${esc(a.u7min)}" placeholder="0"></div>
       <div class="field"><label for="fNew">Novità</label><select id="fNew">${o('', 'Tutti', a.onlyNew ? '1' : '')}${o('1', 'Solo nuovi in questo report', a.onlyNew ? '1' : '')}</select></div></div>
       ${active ? '<button class="btn" data-clearfilters>Azzera filtri</button>' : ''}
@@ -1108,10 +1278,10 @@ function compareTable(rs) {
     ['Stock iniziale', (r) => `${fN(r.calc.firstQty)}${r.calc.fromDay1 ? '' : ' (dal ' + fD(S.model.snaps[r.calc.firstIdx].meta.completed) + ')'}`, 1],
     ['Δ da inizio', (r) => dp(r.calc.dFirst) || '0', 1],
     ['Prezzo vendita', (r) => fE(r.sell)], ['RRP', (r) => r.rrp ? fE(r.rrp) : '—'], ['Price Type', (r) => pt(r.ptype)],
-    ['Sconto su RRP', (r) => r.calc.discount != null ? r.calc.discount + '%' : '—', 1],
+    ['Sconto su RRP', (r) => discTxt(r.calc.discount), 1],
     ['Vendite 7gg', (r) => fN(r.u7)], ['Valore 7gg', (r) => fE(r.v7)], ['Ultima vendita', (r) => fD(r.last)],
     ['Stima vendite', (r) => r.calc.estSales == null ? '—' : fN(r.calc.estSales), 1],
-    ['Taglie', (r) => r.frag ? esc(r.frag) : r.qty > 3 ? 'non elencate (oltre 3 pz)' : '—'], ['Barcode', (r) => `<span class="mono">${esc(r.barcode)}</span>`],
+    ['Taglie', (r) => r.frag ? esc(r.frag) : 'non disponibili'], ['Ubicazione', (r) => r.loc ? `<span class="mono">${esc(r.loc)}</span>` : '—'],
   ];
   return `<div class="card"><div class="cmpwrap" style="border:0"><table class="cmp"><thead><tr><th scope="col"></th>${rs.map((r) => `<th scope="col"><button class="code" data-open="${esc(r.key)}" style="background:none;border:0;padding:0;text-decoration:underline">${esc(r.style)}</button></th>`).join('')}</tr></thead><tbody>${lines.map((l) => `<tr${l[2] ? ' class="c"' : ''}><th scope="row">${l[0]}</th>${rs.map((r) => `<td>${l[1](r)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
   <p class="note">Le righe marcate ·calc sono calcolate dall'app confrontando i report. La stima vendite conta i giorni in cui la data di ultima vendita è avanzata.</p></div>`;
@@ -1153,19 +1323,19 @@ function openItem(key) {
   const g = (l, v) => `<div><span class="l">${l}</span><span class="v">${v}</span></div>`;
   let h = `<div class="view"><div class="ticket"><div class="hero-code">${esc(base.style)}</div><div style="font-weight:600">${esc(base.desc)}</div>
     <div class="meta"><span>${esc(base.brand)}</span><span>${esc(base.gender)}</span><span>${pt(base.ptype)}</span><span>${esc(S.model.snaps[S.idx].meta.branch)} ${esc(S.model.snaps[S.idx].meta.branchName || '')}</span></div>
-    <div class="bc">${esc(base.barcode)}</div></div>`;
+    ${base.barcode ? `<div class="bc">${esc(base.barcode)}</div>` : ''}${base.loc ? `<div class="bc">Ubicazione ${esc(base.loc)}</div>` : ''}</div>`;
   if (!r) h += `<div class="warnbox">Non presente nel report del ${fD(S.model.snaps[S.idx].meta.completed)}. Ultima presenza: ${fD(lastSeen.meta.completed)} con ${fN(lastSeen.row.qty)} pz. L'assenza può dipendere da esaurimento, trasferimento o esposizione.</div>`;
   else {
     h += `<section class="card"><header><h2>Dati del report</h2>${tagR}</header><div class="grid">
-      ${g('Stock attuale', fN(r.qty) + ' pz')}${g('Prezzo vendita', fE(r.sell))}${g('RRP', r.rrp ? fE(r.rrp) : '— (Full)')}
+      ${g('Stock attuale', fN(r.qty) + ' pz')}${g('Prezzo vendita', fE(r.sell))}${g('RRP', r.rrp ? fE(r.rrp) : '—')}
       ${g('Price Type', pt(r.ptype))}${g('Vendite 7gg', fN(r.u7) + ' pz')}${g('Valore vendite 7gg', fE(r.v7))}
-      ${g('Ultima vendita', fD(r.last))}${g('Taglie', r.frag ? esc(r.frag) : r.qty > 3 ? 'non elencate: il report le indica solo fino a 3 pz' : '—')}${g('Launch', fD(r.launch))}
+      ${g('Ultima vendita', fD(r.last))}${g('Taglie', r.frag ? esc(r.frag) + ' (dal PDF)' : 'non disponibili')}${g('Ubicazione', r.loc ? `<span class="mono">${esc(r.loc)}</span>` : '—')}${g('Launch', fD(r.launch))}
     </div><p class="note">Vendite 7gg è un totale mobile degli ultimi 7 giorni, non le vendite di oggi.</p></section>
     <section class="card"><header><h2>Calcoli</h2>${tagC}</header><div class="grid c">
       ${g('Stock iniziale', fN(r.calc.firstQty) + (r.calc.fromDay1 ? ' (Giorno 1)' : ' (dal ' + fD(S.model.snaps[r.calc.firstIdx].meta.completed) + ')'))}
       ${g('Δ da ieri', S.idx > 0 ? (r.calc.dPrev == null ? 'nuovo oggi' : dp(r.calc.dPrev) || '0') : '—')}
       ${g('Δ da inizio', dp(r.calc.dFirst) || '0')}
-      ${g('Valore in stock', fE(r.calc.stockValue))}${g('Sconto su RRP', r.calc.discount != null ? r.calc.discount + '%' : '—')}
+      ${g('Valore in stock', fE(r.calc.stockValue))}${g('Sconto su RRP', discTxt(r.calc.discount))}
       ${g('Giorni da ultima vendita', r.calc.daysSinceSale ?? '—')}
       ${g('Stima vendite nel periodo', r.calc.estSales == null ? 'dal 2° report' : fN(r.calc.estSales))}
     </div><p class="note">Un calo di stock non è per forza una vendita: può essere un trasferimento o un altro movimento. La stima vendite considera solo i giorni in cui la data di ultima vendita è avanzata.</p></section>`;
@@ -1191,33 +1361,37 @@ function openItem(key) {
 
 /* ---------- vista: Report ---------- */
 function renderRep() {
-  let h = `<div class="view"><div class="lede"><h1>Report</h1><p>Carica il PDF di ogni giorno. I precedenti non vengono mai sovrascritti.</p></div>`;
+  let h = `<div class="view"><div class="lede"><h1>Report</h1><p>Un report al giorno. I precedenti non vengono mai sovrascritti.</p></div>`;
   h += `<section class="card"><header><h2>Nuovo report</h2></header><div class="import">`;
   const p = S.pending;
   if (!p) {
     const clip = !window.claude && navigator.clipboard && navigator.clipboard.read;
-    h += `<button class="btn primary" data-pick>Carica report PDF</button>
+    h += `<button class="btn primary" data-pick>Carica Condensed List</button>
     <div class="or">oppure</div>
-    <div class="paste" id="pasteZone" contenteditable="true" inputmode="none" role="textbox" aria-label="Incolla qui il file PDF" spellcheck="false">Copia il file PDF, poi <b>tieni premuto qui</b> e scegli <b>Incolla</b><br><span style="font-size:13px">Dal computer: Ctrl+V o trascina il file nella pagina</span></div>
+    <div class="paste" id="pasteZone" contenteditable="true" inputmode="none" role="textbox" aria-label="Incolla qui i file del report" spellcheck="false">Copia il file, poi <b>tieni premuto qui</b> e scegli <b>Incolla</b><br><span style="font-size:13px">Dal computer: Ctrl+V o trascina i file nella pagina</span></div>
     ${clip ? '<button class="btn" data-clip>Incolla dagli appunti</button>' : ''}
-    <span class="note" style="padding:0">Accetta il PDF "Not on Display" oppure un file di backup .json.</span>`;
+    <div class="infobox"><b>Ogni giorno:</b> il file Excel <span class="mono">Condensed_List</span>, che contiene tessile, calzature e accessori.<br>
+    <b>Facoltativo:</b> selezionalo insieme al PDF Not on Display dello stesso giorno per avere le taglie.<br>
+    Vanno bene anche i 3 Excel separati (tessile, calzature, accessori) presi insieme, o un backup .json.</div>`;
   }
-  else if (p.stage === 'parsing') h += `<span>Leggo ${esc(p.name)}… pagina ${p.page} di ${p.pages || '?'}</span><div class="bar"><i style="width:${p.pages ? 100 * p.page / p.pages : 5}%"></i></div>`;
+  else if (p.stage === 'parsing') h += `<span>Leggo ${esc(p.name)}…${p.pages ? ` PDF pagina ${p.page} di ${p.pages}` : ''}</span><div class="bar"><i style="width:${p.pages ? 100 * p.page / p.pages : 10}%"></i></div>`;
   else if (p.stage === 'error') h += `<div class="warnbox">${esc(p.msg)}</div><button class="btn" data-cancel>Chiudi</button>`;
   else if (p.stage === 'saving') h += `<span>Salvo nello storico…</span><div class="bar"><i style="width:${p.pct}%"></i></div>`;
   else if (p.stage === 'preview') {
-    const r = p.res, m = r.meta;
-    h += `<div><div style="font-family:var(--f-display);font-size:24px">${esc(fSnap({ completed: m.completed }))}</div><div class="note" style="padding:0">${esc(m.branch)} ${esc(m.branchName)} · Scan ${esc(m.scanId)} · ${esc(p.name)}</div></div>
+    const r = p.res, m = r.meta, c = r.checks;
+    h += `<div><div style="font-family:var(--f-display);font-size:24px">${esc(fSnap({ completed: m.completed }))}</div><div class="note" style="padding:0">Negozio ${esc(m.branch)} ${esc(m.branchName)} · ${esc(m.files.join(', '))}</div></div>
     <div class="checks">
-      <span class="${r.checks.rowsOk ? 'ok' : 'ko'}">${r.checks.rowsOk ? '✓' : '✗'} Righe lette: ${fN(r.checks.rows + r.checks.dummy)} su ${fN(m.declaredStyles)} dichiarate</span>
-      <span class="${r.checks.valueOk ? 'ok' : 'ko'}">${r.checks.valueOk ? '✓' : '✗'} Valore: ${fE(r.checks.value)} su ${fE(m.declaredValue)} dichiarati</span>
-      ${r.checks.dummy ? `<span class="note" style="padding:0">Esclusa ${r.checks.dummy} riga tecnica Returns/Vouchers.</span>` : ''}
+      <span class="${c.complete ? 'ok' : 'ko'}">${c.complete ? '✓ Completo: tessile, calzature e accessori' : '✗ Mancano: ' + esc(c.missingParts.join(', '))}</span>
+      <span>${fN(c.rows)} articoli · ${fN(c.qty)} pezzi · ${fE(c.value)}</span>
+      <span class="${m.sizesFromPdf ? 'ok' : ''}">${m.pdfDate ? (m.sizesFromPdf ? `✓ Taglie dal PDF per ${fN(m.sizesFromPdf)} articoli` : 'PDF letto, ma nessuna taglia utilizzabile') + (m.sizesSkipped ? ` · ${fN(m.sizesSkipped)} scartate perché non tornano con l'Excel` : '') : 'Nessun PDF: taglie non disponibili (facoltativo)'}</span>
+      ${m.ignored.length ? `<span class="note" style="padding:0">Ho usato il Condensed List e ignorato: ${esc(m.ignored.join(', '))}</span>` : ''}
     </div>`;
     if (r.warnings.length) h += `<div class="infobox">${r.warnings.slice(0, 5).map(esc).join('<br>')}${r.warnings.length > 5 ? `<br>…e altri ${r.warnings.length - 5}` : ''}</div>`;
-    if (p.dup) h += `<div class="warnbox">Questo report è già nello storico. Non lo salvo una seconda volta.</div><button class="btn" data-cancel>Chiudi</button>`;
+    if (p.dup) h += `<div class="warnbox">Per il ${fD(m.completed)} c'è già un report nello storico (ore ${esc(p.dup.completed.slice(11, 16))}). Ne tengo uno al giorno: per sostituirlo, eliminalo dalla lista qui sotto e ricarica il file.</div><button class="btn" data-cancel>Chiudi</button>`;
     else {
-      const ok = r.checks.rowsOk && r.checks.valueOk;
-      if (!ok) h += `<div class="warnbox">I controlli non tornano: alcuni dati potrebbero essere letti male. Salva solo se sei sicuro del file.</div>`;
+      if (!c.complete) h += `<div class="warnbox">Manca una parte del negozio: salvandolo, gli articoli mancanti risulterebbero usciti dal report. Carica il Condensed List oppure tutti e 3 i file.</div>`;
+      if (p.same) h += `<div class="infobox">I dati sono identici al report precedente: probabilmente il sistema non li ha ancora aggiornati. Salvarlo non aggiunge informazioni.</div>`;
+      const ok = c.complete && !p.same;
       h += `<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" data-save>${ok ? 'Salva nello storico' : 'Salva comunque'}</button><button class="btn" data-cancel>Annulla</button></div>`;
     }
   }
@@ -1227,10 +1401,12 @@ function renderRep() {
   const list = S.metas.slice().reverse();
   h += `<section class="card"><header><h2>Storico</h2><span class="note" style="padding:0">${fN(list.length)} report</span></header><div class="list">`;
   if (!list.length) h += `<div class="empty">Ancora nessun report.</div>`;
-  const first = S.metas.find((m) => m.branch === S.branch);
+  const first = S.metas.find((m) => m.branch === S.branch && m.source === 'xlsx');
   for (const m of list) {
-    const ok = m.checks && m.checks.rowsOk && m.checks.valueOk;
-    h += `<div class="snap"><div><b>${esc(fSnap(m))}</b>${first && first.id === m.id ? ' <span class="tag rep">giorno 1</span>' : ''}<div class="sub">${esc(m.branch)} · ${fN(m.rows)} righe · ${ef0.format(m.declaredValue || 0)} · ${ok ? '<span class="ok">controlli ok</span>' : '<span class="ko">controlli non superati</span>'}</div></div>
+    const sub = m.source === 'xlsx'
+      ? `${esc(m.branch)} · ${fN(m.rows)} articoli · ${ef0.format(m.declaredValue || 0)} · ${m.checks && m.checks.complete ? '<span class="ok">completo</span>' : '<span class="ko">incompleto</span>'}${m.sizesFromPdf ? ' · con taglie' : ''}`
+      : `PDF · <span class="ko">non usato nello storico</span>: il PDF conta meno pezzi del reale`;
+    h += `<div class="snap"><div><b>${esc(fSnap(m))}</b>${first && first.id === m.id ? ' <span class="tag rep">giorno 1</span>' : ''}<div class="sub">${sub}</div></div>
       <div class="acts">${S.confirmDel === m.id ? `<button class="btn danger" data-delok="${esc(m.id)}">Elimina</button><button class="btn" data-delno>No</button>` : `<button class="btn ghost" data-del="${esc(m.id)}" aria-label="Elimina report">Elimina</button>`}</div></div>`;
   }
   h += `</div></section>`;
@@ -1242,11 +1418,12 @@ function renderRep() {
   </div></section>`;
   h += `<section class="card"><header><h2>Backup</h2></header><div class="import"><p style="margin:0" class="note">Un file con tutti i report salvati. Salvalo su Drive, iCloud o inviatelo per email: per ripristinarlo, caricalo con il pulsante "Carica report PDF".</p><button class="btn" data-backup ${S.metas.length ? '' : 'disabled'}>Esporta backup</button></div></section>`;
   h += `<section class="card"><header><h2>Come leggere i dati</h2></header><div class="import" style="font-size:13px;gap:8px">
-    <div>${tagR} Qty, prezzi, Price Type, taglie, ultima vendita e vendite 7gg sono letti dal PDF così come sono.</div>
+    <div>${tagR} Qty, prezzi, RRP, Price Type, ultima vendita, vendite 7gg e ubicazione sono letti dal Condensed List così come sono.</div>
     <div>${tagC} Differenze, stock iniziale, sconti e stime vendite sono calcolati confrontando i report salvati.</div>
-    <div>TK = promo · NT = variazione di prezzo non promo · FULL = prezzo pieno (RRP vuoto).</div>
+    <div>TK = promo · NT = variazione di prezzo non promo, anche in aumento sopra l'RRP · FULL = prezzo pieno.</div>
     <div>Il report elenca solo articoli con stock: chi esce dal report può essere esaurito, trasferito o esposto.</div>
-    <div>Le taglie sono indicate solo quando restano 3 pezzi o meno.</div>
+    <div>Le taglie arrivano dal PDF Not on Display, se lo carichi insieme all'Excel. Il PDF le indica solo per gli articoli con 3 pezzi o meno, e l'app le usa solo quando tornano con la quantità dell'Excel.</div>
+    <div>Un articolo con due linee prezzo nello stesso reparto è mostrato come una riga sola, con i pezzi sommati.</div>
   </div></section>`;
   return h + '</div>';
 }
@@ -1266,27 +1443,67 @@ function loadPdfjs() {
 }
 const snapId = (m) => `${m.completed}_${m.scanId || '0'}`.replace(/[^A-Za-z0-9_\-.~:@+]/g, '-');
 
-async function handleFile(file) {
-  if (!file) return;
-  if (/\.json$/i.test(file.name) || file.type === 'application/json') return restoreBackup(file);
+let xlsxReady = null;
+function loadXlsx() {
+  if (xlsxReady) return xlsxReady;
+  xlsxReady = new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = 'lib/xlsx.full.min.js';
+    s.onload = () => (window.XLSX ? res(window.XLSX) : rej(new Error('Lettore Excel non disponibile.')));
+    s.onerror = () => { xlsxReady = null; rej(new Error('Non riesco a caricare il lettore Excel. Controlla la connessione e riprova.')); };
+    document.head.appendChild(s);
+  });
+  return xlsxReady;
+}
+const handleFile = (f) => handleFiles([f]);
+async function handleFiles(list) {
+  const files = Array.from(list || []).filter(Boolean);
+  if (!files.length) return;
   if (S.tab !== 'rep') setTab('rep');
-  S.pending = { stage: 'parsing', name: file.name || 'PDF incollato', page: 0, pages: 0 }; render();
+  S.pending = { stage: 'parsing', name: files.map((f) => f.name || 'file incollato').join(', '), page: 0, pages: 0 }; render();
   try {
-    const data = new Uint8Array(await file.arrayBuffer());
-    const head = String.fromCharCode(...data.slice(0, 1024));
-    if (head.trimStart().startsWith('{')) return restoreBackup(file);
-    if (!head.includes('%PDF')) throw new Error('Il file incollato non è un PDF. Copia il file del report (non il testo o uno screenshot) e riprova.');
-    const lib = await loadPdfjs();
-    const pdf = await lib.getDocument({ data, isEvalSupported: false, disableFontFace: true }).promise;
-    S.pending.pages = pdf.numPages;
-    let lastDraw = 0;
-    const res = await P.parseReport(pdf, lib.OPS, (pg, tot) => { S.pending.page = pg; if (Date.now() - lastDraw > 120 || pg === tot) { lastDraw = Date.now(); if (S.tab === 'rep') render(); } });
-    pdf.destroy && pdf.destroy();
-    if (!res.meta.completed || !res.rows.length) throw new Error('Questo PDF non sembra un report "Not on Display": non trovo la tabella degli articoli o la data del report.');
-    res.meta.id = snapId(res.meta);
-    S.pending = { stage: 'preview', name: file.name || 'PDF incollato', res, dup: S.metas.some((m) => m.id === res.meta.id) };
+    const items = [];
+    for (const f of files) {
+      const data = new Uint8Array(await f.arrayBuffer());
+      const head = String.fromCharCode(...data.slice(0, 1024));
+      if (head.trimStart().startsWith('{')) items.push({ type: 'json', f });
+      else if (head.includes('%PDF')) items.push({ type: 'pdf', f, data });
+      else if (head.startsWith('PK') || head.startsWith('\xD0\xCF')) items.push({ type: 'xlsx', f, data });
+      else throw new Error(`${f.name || 'Il file incollato'} non è un Excel né un PDF del report. Copia il file (non il testo o uno screenshot) e riprova.`);
+    }
+    const json = items.find((k) => k.type === 'json');
+    if (json) { S.pending = null; return restoreBackup(json.f); }
+    const xs = items.filter((k) => k.type === 'xlsx');
+    const pdfItem = items.find((k) => k.type === 'pdf');
+    if (!xs.length) throw new Error('Lo storico ora si basa sul Condensed List in Excel, perché il PDF conta meno pezzi del reale. Carica il file Condensed_List del giorno; il PDF puoi aggiungerlo insieme, solo per le taglie.');
+    const lib = await loadXlsx();
+    const sheets = xs.map((k) => {
+      const name = k.f.name || 'Excel incollato';
+      try { return XP.parseSheet(XP.sheetRows(lib, lib.read(k.data, { type: 'array' })), name); } catch (e) { return { error: `${name}: file non leggibile.` }; }
+    });
+    let pdfRes = null;
+    if (pdfItem) {
+      const plib = await loadPdfjs();
+      const pdf = await plib.getDocument({ data: pdfItem.data, isEvalSupported: false, disableFontFace: true }).promise;
+      S.pending.pages = pdf.numPages;
+      let lastDraw = 0;
+      pdfRes = await P.parseReport(pdf, plib.OPS, (pg, tot) => { S.pending.page = pg; if (Date.now() - lastDraw > 120 || pg === tot) { lastDraw = Date.now(); if (S.tab === 'rep') render(); } });
+      pdf.destroy && pdf.destroy();
+    }
+    const res = XP.combine(sheets, pdfRes);
+    if (res.error) throw new Error(res.error);
+    if (!res.meta.completed) throw new Error('Non trovo la data del report nella prima riga dell\'Excel (Date:…).');
+    res.meta.id = `${res.meta.completed}_xlsx`.replace(/[^A-Za-z0-9_\-.~:@+]/g, '-');
+    const day = res.meta.completed.slice(0, 10);
+    const dup = S.metas.find((m) => m.source === 'xlsx' && m.branch === res.meta.branch && m.completed.slice(0, 10) === day) || null;
+    let same = false;
+    const last = S.model && S.model.snaps.length ? S.model.snaps[S.model.snaps.length - 1] : null;
+    if (last && !dup && last.meta.branch === res.meta.branch) {
+      same = res.rows.length === last.map.size && res.rows.every((r) => { const q = last.map.get(r.key); return q && q.qty === r.qty && q.sell === r.sell && q.u7 === r.u7 && q.last === r.last && q.ptype === r.ptype; });
+    }
+    S.pending = { stage: 'preview', res, dup, same };
   } catch (e) {
-    S.pending = { stage: 'error', msg: e.message || 'Errore nella lettura del PDF.' };
+    S.pending = { stage: 'error', msg: e.message || 'Errore nella lettura del file.' };
   }
   render();
 }
@@ -1294,7 +1511,7 @@ async function handleFile(file) {
 async function savePending() {
   const res = S.pending.res;
   const m = res.meta;
-  const meta = { id: m.id, completed: m.completed, scanId: m.scanId, branch: m.branch, branchName: m.branchName, declaredStyles: m.declaredStyles, declaredValue: m.declaredValue, scanned: m.scanned, checks: res.checks, warnings: res.warnings.slice(0, 20) };
+  const meta = { id: m.id, source: 'xlsx', kind: m.kind, completed: m.completed, branch: m.branch, branchName: m.branchName, files: m.files, sizesFromPdf: m.sizesFromPdf, declaredStyles: res.checks.rows, declaredValue: res.checks.value, checks: res.checks, warnings: res.warnings.slice(0, 20) };
   S.pending = { stage: 'saving', pct: 5 }; render();
   try {
     await Store.save(meta, res.rows.map(E.pack), (i, n) => { S.pending.pct = Math.round(100 * i / n); render(); });
@@ -1408,7 +1625,7 @@ document.addEventListener('click', (ev) => {
   if (d.evmore !== undefined) { S.ev.limit += 200; return render(); }
   if (d.artmore !== undefined) { S.art.limit += 60; return render(); }
   if (d.togglefilters !== undefined) { S.art.showFilters = !S.art.showFilters; return render(); }
-  if (d.clearfilters !== undefined) { Object.assign(S.art, { ptype: '', qmin: '', qmax: '', u7min: '', lastOld: '', onlyNew: false }); return render(); }
+  if (d.clearfilters !== undefined) { Object.assign(S.art, { ptype: '', qmin: '', qmax: '', u7min: '', lastOld: '', loc: '', onlyNew: false }); return render(); }
   if (d.clearmain !== undefined) { Object.assign(S.art, { dept: '', cat: '', brand: '', size: '' }); return render(); }
 });
 
@@ -1426,7 +1643,7 @@ document.addEventListener('change', (ev) => {
   const id = ev.target.id, v = ev.target.value;
   if (id === 'snapSel') { S.idx = +v; S.ev.to = null; S.ev.from = null; closeSheet(); return render(); }
   if (id === 'branchSel') { S.branch = v; return loadAll().then(render); }
-  if (id === 'fileIn') return handleFile(ev.target.files[0]);
+  if (id === 'fileIn') return handleFiles(ev.target.files);
   if (id === 'evFrom') { S.ev.from = +v; return render(); }
   if (id === 'evTo') { S.ev.to = +v; if (S.ev.from >= S.ev.to) S.ev.from = S.ev.to - 1; return render(); }
   if (id === 'artSort') { S.art.sort = v; return render(); }
@@ -1435,36 +1652,34 @@ document.addEventListener('change', (ev) => {
   if (id === 'fNew') { S.art.onlyNew = v === '1'; return render(); }
   const numMap = { fQmin: 'qmin', fQmax: 'qmax', fU7: 'u7min' };
   if (numMap[id]) { S.art[numMap[id]] = v.replace(/[^0-9]/g, ''); S.art.limit = 60; return render(); }
+  if (id === 'fLoc') { S.art.loc = v.trim(); S.art.limit = 60; return render(); }
   if (['sLow', 'sOld', 'sBig', 'sPct'].includes(id)) { sumCache.k = null; toast('Soglie aggiornate'); }
 });
-function fileFromList(list) {
-  const fs = Array.from(list || []);
-  return fs.find((f) => f.type === 'application/pdf' || /\.pdf$/i.test(f.name)) || fs.find((f) => f.type === 'application/json' || /\.json$/i.test(f.name)) || fs[0] || null;
-}
+const filesFrom = (list) => Array.from(list || []).filter(Boolean);
 document.addEventListener('paste', (e) => {
   const cd = e.clipboardData;
-  let f = cd ? fileFromList(cd.files) : null;
-  if (!f && cd && cd.items) for (const it of cd.items) { if (it.kind === 'file') { const x = it.getAsFile(); if (x) { f = x; break; } } }
+  let fs = cd ? filesFrom(cd.files) : [];
+  if (!fs.length && cd && cd.items) for (const it of cd.items) { if (it.kind === 'file') { const x = it.getAsFile(); if (x) fs.push(x); } }
   const inZone = e.target && e.target.closest && e.target.closest('#pasteZone');
-  if (f) { e.preventDefault(); if (document.activeElement) document.activeElement.blur(); handleFile(f); return; }
-  if (inZone) { e.preventDefault(); toast('Negli appunti non c\'è un file PDF. Copia il file del report, non il suo testo, e riprova.'); }
+  if (fs.length) { e.preventDefault(); if (document.activeElement) document.activeElement.blur(); handleFiles(fs); return; }
+  if (inZone) { e.preventDefault(); toast('Negli appunti non c\'è un file. Copia il file del report, non il suo testo, e riprova.'); }
 });
 document.addEventListener('beforeinput', (e) => { if (e.target && e.target.id === 'pasteZone' && e.inputType !== 'insertFromPaste') e.preventDefault(); });
 document.addEventListener('dragover', (e) => { if (e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files')) { e.preventDefault(); const z = $('#pasteZone'); if (z) z.classList.add('over'); } });
 document.addEventListener('dragleave', () => { const z = $('#pasteZone'); if (z) z.classList.remove('over'); });
 document.addEventListener('drop', (e) => {
-  const f = e.dataTransfer ? fileFromList(e.dataTransfer.files) : null;
-  if (!f) return;
-  e.preventDefault(); handleFile(f);
+  const fs = e.dataTransfer ? filesFrom(e.dataTransfer.files) : [];
+  if (!fs.length) return;
+  e.preventDefault(); handleFiles(fs);
 });
 async function readClipboard() {
   try {
     const items = await navigator.clipboard.read();
     for (const it of items) {
-      const t = it.types.find((x) => /pdf/i.test(x)) || it.types.find((x) => /json/i.test(x));
-      if (t) { const b = await it.getType(t); return handleFile(new File([b], /json/i.test(t) ? 'backup.json' : 'appunti.pdf', { type: /json/i.test(t) ? 'application/json' : 'application/pdf' })); }
+      const t = it.types.find((x) => /sheet|excel/i.test(x)) || it.types.find((x) => /pdf/i.test(x)) || it.types.find((x) => /json/i.test(x));
+      if (t) { const b = await it.getType(t); const ext = /json/i.test(t) ? 'json' : /pdf/i.test(t) ? 'pdf' : 'xlsx'; return handleFile(new File([b], 'appunti.' + ext, { type: t })); }
     }
-    toast('Negli appunti non trovo un PDF. Prova a tenere premuto il riquadro e scegliere Incolla.');
+    toast('Negli appunti non trovo il file del report. Prova a tenere premuto il riquadro e scegliere Incolla.');
   } catch (e) {
     toast('Il telefono non permette di leggere gli appunti da qui. Tieni premuto il riquadro e scegli Incolla.');
   }

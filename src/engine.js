@@ -1,12 +1,12 @@
 // Motore storico: confronta snapshot consecutivi e genera eventi.
 // Distingue i DATI DEL REPORT (campi letti dal PDF) dai CALCOLI (differenze, stime).
 (function (root) {
-  const COLS = ['key', 'gender', 'brand', 'desc', 'style', 'rrp', 'sell', 'ptype', 'qty', 'frag', 'last', 'u7', 'v7', 'launch'];
+  const COLS = ['key', 'gender', 'brand', 'desc', 'style', 'rrp', 'sell', 'ptype', 'qty', 'frag', 'last', 'u7', 'v7', 'launch', 'loc', 'gcode'];
   const pack = (r) => COLS.map((c) => r[c] ?? '');
   const unpack = (a) => {
     const r = {};
-    COLS.forEach((c, i) => { r[c] = a[i]; });
-    r.barcode = String(r.key).replace(/#\d+$/, '');
+    COLS.forEach((c, i) => { r[c] = a[i] ?? ''; });
+    r.barcode = String(r.key).includes('|') ? '' : String(r.key).replace(/#\d+$/, '');
     return r;
   };
 
