@@ -1049,7 +1049,7 @@ function compareTable(rs) {
     ['Sconto su RRP', (r) => r.calc.discount != null ? r.calc.discount + '%' : '—', 1],
     ['Vendite 7gg', (r) => fN(r.u7)], ['Valore 7gg', (r) => fE(r.v7)], ['Ultima vendita', (r) => fD(r.last)],
     ['Stima vendite', (r) => r.calc.estSales == null ? '—' : fN(r.calc.estSales), 1],
-    ['Taglie', (r) => r.frag ? esc(r.frag) : r.qty > 3 ? 'non nel report' : '—'], ['Barcode', (r) => `<span class="mono">${esc(r.barcode)}</span>`],
+    ['Taglie', (r) => r.frag ? esc(r.frag) : r.qty > 3 ? 'non elencate (oltre 3 pz)' : '—'], ['Barcode', (r) => `<span class="mono">${esc(r.barcode)}</span>`],
   ];
   return `<div class="card"><div class="cmpwrap" style="border:0"><table class="cmp"><thead><tr><th scope="col"></th>${rs.map((r) => `<th scope="col"><button class="code" data-open="${esc(r.key)}" style="background:none;border:0;padding:0;text-decoration:underline">${esc(r.style)}</button></th>`).join('')}</tr></thead><tbody>${lines.map((l) => `<tr${l[2] ? ' class="c"' : ''}><th scope="row">${l[0]}</th>${rs.map((r) => `<td>${l[1](r)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
   <p class="note">Le righe marcate ·calc sono calcolate dall'app confrontando i report. La stima vendite conta i giorni in cui la data di ultima vendita è avanzata.</p></div>`;
@@ -1097,7 +1097,7 @@ function openItem(key) {
     h += `<section class="card"><header><h2>Dati del report</h2>${tagR}</header><div class="grid">
       ${g('Stock attuale', fN(r.qty) + ' pz')}${g('Prezzo vendita', fE(r.sell))}${g('RRP', r.rrp ? fE(r.rrp) : '— (Full)')}
       ${g('Price Type', pt(r.ptype))}${g('Vendite 7gg', fN(r.u7) + ' pz')}${g('Valore vendite 7gg', fE(r.v7))}
-      ${g('Ultima vendita', fD(r.last))}${g('Taglie', r.frag ? esc(r.frag) : r.qty > 3 ? 'non nel report (> 3 pz)' : '—')}${g('Launch', fD(r.launch))}
+      ${g('Ultima vendita', fD(r.last))}${g('Taglie', r.frag ? esc(r.frag) : r.qty > 3 ? 'non elencate: il report le indica solo fino a 3 pz' : '—')}${g('Launch', fD(r.launch))}
     </div><p class="note">Vendite 7gg è un totale mobile degli ultimi 7 giorni, non le vendite di oggi.</p></section>
     <section class="card"><header><h2>Calcoli</h2>${tagC}</header><div class="grid c">
       ${g('Stock iniziale', fN(r.calc.firstQty) + (r.calc.fromDay1 ? ' (Giorno 1)' : ' (dal ' + fD(S.model.snaps[r.calc.firstIdx].meta.completed) + ')'))}
