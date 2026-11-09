@@ -600,7 +600,7 @@ const DOW = ['dom', 'lun', 'mar', 'mer', 'gio', 'ven', 'sab'];
 const fSnap = (m) => { if (!m || !m.completed) return '—'; const d = new Date(m.completed.slice(0, 10) + 'T12:00:00'); return `${DOW[d.getDay()]} ${fD(m.completed)} · ${m.completed.slice(11, 16)}`; };
 const norm = (s) => String(s || '').toUpperCase().replace(/[\s\-_./]/g, '');
 const PART = 500;
-const APP_VERSION = '10 · 09/11/26';
+const APP_VERSION = '11 · 09/11/26';
 
 /* ---------- impostazioni (solo comodità locale) ---------- */
 const SETTINGS_KEY = 'nod-settings';
@@ -724,7 +724,7 @@ const S = {
   metas: [], branch: null, model: null, idx: -1, tab: 'dash',
   dashSel: { stock: 'up', sales: 'top', prices: 'promo', news: 'nuovi' },
   art: { q: '', brand: '', dept: '', cat: '', loc: '', ptype: '', qmin: '', qmax: '', u7min: '', lastOld: '', onlyNew: false, sort: 'qty', limit: 60, showFilters: false },
-  ev: { from: null, to: null, types: null, q: '', limit: 200 },
+  ev: { from: null, to: null, kind: 'all', dept: '', brand: '', sort: 'type', q: '', limit: 200 },
   pending: null, confirmDel: null, busy: false,
 };
 // Confronto: con il report precedente oppure con l'ultimo report del giorno prima
@@ -919,40 +919,71 @@ const EV_GROUPS = [
   ['Prezzi', ['promo', 'varprezzo', 'full', 'ptype', 'prezzo', 'rrp']],
   ['Vendite', ['u7', 'v7', 'last']],
 ];
+const EV_PRESETS = [
+  ['all', 'Tutti i cambiamenti', Object.keys(E.EVENT_TYPES)],
+  ['sp', 'Stock e prezzi', EV_GROUPS[0][1].concat(EV_GROUPS[1][1])],
+  ['g0', 'Solo stock', EV_GROUPS[0][1]],
+  ['g1', 'Solo prezzi', EV_GROUPS[1][1]],
+  ['g2', 'Solo vendite', EV_GROUPS[2][1]],
+];
+const evTypes = (kind) => { const p = EV_PRESETS.find((x) => x[0] === kind); return new Set(p ? p[2] : kind && kind.startsWith('t:') ? [kind.slice(2)] : Object.keys(E.EVENT_TYPES)); };
+const deptOf = (g) => { if (/^Accessories/i.test(g || '')) return 'Accessori'; const m = /^(\w+)/.exec(g || ''); return m ? DEPTS[m[1]] || m[1] : ''; };
+const DEPT_ORDER_EV = ['Uomo', 'Donna', 'Junior', 'Bambino', 'Infant', 'Replica', 'Accessori'];
+try { const k = localStorage.getItem('nod-evkind'); if (k) S.ev.kind = k; } catch (e) {}
+function evScope() {
+  // cambiamenti del periodo, filtrati per reparto e brand (non per tipo né per ricerca)
+  return S.model.events.filter((e) => e.i > S.ev.from && e.i <= S.ev.to && (!S.ev.dept || deptOf(e.gender) === S.ev.dept) && (!S.ev.brand || e.brand === S.ev.brand));
+}
 function renderVar() {
   if (!S.model) return emptyState();
   const n = S.model.snaps.length;
   if (n < 2) return `<div class="view"><div class="lede"><h1>Variazioni</h1><p>Lo storico parte dal ${fD(S.model.snaps[0].meta.completed)}.</p></div><div class="card"><div class="empty" style="border:0">Le variazioni compaiono quando carichi il secondo report: ogni cambiamento verrà registrato con data, style, valore precedente, valore nuovo e differenza.</div></div></div>`;
   if (S.ev.to == null || S.ev.to >= n) S.ev.to = S.idx > 0 ? S.idx : n - 1;
   if (S.ev.from == null || S.ev.from >= S.ev.to) S.ev.from = S.ev.to - 1;
-  if (!S.ev.types) S.ev.types = new Set(Object.keys(E.EVENT_TYPES));
+  if (!S.ev.kind) S.ev.kind = 'all';
   const opt = (i, sel, minI, maxI) => S.model.snaps.map((s, k) => k < minI || k > maxI ? '' : `<option value="${k}"${k === sel ? ' selected' : ''}>${esc(fD(s.meta.completed).slice(0, 5) + ' · ' + s.meta.completed.slice(11, 16))}</option>`).join('');
-  let h = `<div class="view"><div class="lede"><h1>Variazioni</h1><p>Ogni cambiamento tra due report: valore precedente, nuovo e differenza.</p></div>
+  const o = (v, l, cur) => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${esc(l)}</option>`;
+  // conteggi per tipo nel periodo, con reparto e brand applicati
+  const scope = evScope();
+  const counts = {};
+  scope.forEach((e) => { counts[e.type] = (counts[e.type] || 0) + 1; });
+  const sumOf = (types) => types.reduce((s, t) => s + (counts[t] || 0), 0);
+  let kindOpts = EV_PRESETS.map(([k, l, t]) => o(k, `${l} (${fN(sumOf(t))})`, S.ev.kind)).join('');
+  for (const [g, types] of EV_GROUPS) {
+    kindOpts += `<optgroup label="${esc(g)}">` + types.map((t) => o('t:' + t, `${E.EVENT_TYPES[t]} (${fN(counts[t] || 0)})`, S.ev.kind)).join('') + `</optgroup>`;
+  }
+  // reparti e brand presenti nel periodo
+  const inRange = S.model.events.filter((e) => e.i > S.ev.from && e.i <= S.ev.to);
+  const depts = [...new Set(inRange.map((e) => deptOf(e.gender)).filter(Boolean))].sort((a, b) => DEPT_ORDER_EV.indexOf(a) - DEPT_ORDER_EV.indexOf(b));
+  const brands = [...new Set(inRange.filter((e) => !S.ev.dept || deptOf(e.gender) === S.ev.dept).map((e) => e.brand).filter(Boolean))].sort();
+  if (S.ev.brand && !brands.includes(S.ev.brand)) brands.unshift(S.ev.brand);
+  const active = (S.ev.kind !== 'all' ? 1 : 0) + (S.ev.dept ? 1 : 0) + (S.ev.brand ? 1 : 0) + (S.ev.sort !== 'type' ? 1 : 0);
+  return `<div class="view"><div class="lede"><h1>Variazioni</h1><p>Ogni cambiamento tra due report: valore precedente, nuovo e differenza.</p></div>
   <div class="card"><div class="filters" style="padding-top:12px">
     <div class="row2"><div class="field"><label for="evFrom">Dal report</label><select id="evFrom">${opt(0, S.ev.from, 0, S.ev.to - 1)}</select></div>
     <div class="field"><label for="evTo">Al report</label><select id="evTo">${opt(0, S.ev.to, S.ev.from + 1, n - 1)}</select></div></div>
-    <div class="field"><label for="evQ">Filtra per style, brand o descrizione</label><input id="evQ" type="search" value="${esc(S.ev.q)}" placeholder="es. AF1, NIKE, HQ8707" autocomplete="off"></div>
+    <div class="field"><label for="evKind">Tipo di cambiamento</label><select id="evKind">${kindOpts}</select></div>
+    <div class="row2"><div class="field"><label for="evDept">Reparto</label><select id="evDept">${o('', 'Tutti', S.ev.dept)}${depts.map((d) => o(d, d, S.ev.dept)).join('')}</select></div>
+    <div class="field"><label for="evBrand">Brand</label><select id="evBrand">${o('', 'Tutti', S.ev.brand)}${brands.map((b) => o(b, b, S.ev.brand)).join('')}</select></div></div>
+    <div class="field"><label for="evSort">Ordina per</label><select id="evSort">${o('type', 'Tipo di cambiamento', S.ev.sort)}${o('delta', 'Differenza più grande', S.ev.sort)}${o('style', 'Style Code A-Z', S.ev.sort)}</select></div>
+    <div class="field"><label for="evQ">Cerca style, brand o descrizione</label><input id="evQ" type="search" value="${esc(S.ev.q)}" placeholder="es. AF1, NIKE, HQ8707" autocomplete="off"></div>
+    ${active ? '<button class="btn" data-evreset>Azzera filtri</button>' : ''}
   </div></div><div id="evBody" class="view">${evBody()}</div></div>`;
-  return h;
 }
 function evBody() {
-  const inRange = S.model.events.filter((e) => e.i > S.ev.from && e.i <= S.ev.to);
+  const types = evTypes(S.ev.kind);
   const q = norm(S.ev.q);
-  const counts = {};
-  inRange.forEach((e) => { counts[e.type] = (counts[e.type] || 0) + 1; });
-  const list = inRange.filter((e) => S.ev.types.has(e.type) && (!q || norm(e.style).includes(q) || norm(e.desc).includes(q) || norm(e.brand).includes(q)));
-  let h = `<div class="card"><div class="toolbar" style="padding:12px 12px 2px"><span>${fN(list.length)} cambiamenti</span>${tagC}</div>`;
-  for (const [g, types] of EV_GROUPS) {
-    h += `<div class="chips" role="group" aria-label="${g}"><span class="chip" style="border:0;background:none;padding-inline:0;font-weight:600">${g}</span>`;
-    h += types.map((t) => `<button class="chip" data-evt="${t}" aria-pressed="${S.ev.types.has(t)}">${E.EVENT_TYPES[t]}<span class="n">${fN(counts[t] || 0)}</span></button>`).join('');
-    h += `</div>`;
-  }
-  h += `<div class="chips"><button class="chip" data-evall="1">Tutti</button><button class="chip" data-evall="0">Nessuno</button><button class="chip" data-evall="stock">Solo stock e prezzi</button></div></div>`;
-  h += `<div class="card"><div class="list">`;
-  if (!list.length) h += `<div class="empty" style="border:0">Nessuna variazione con questi filtri.</div>`;
-  let lastI = null, c = 0;
+  const list = evScope().filter((e) => types.has(e.type) && (!q || norm(e.style).includes(q) || norm(e.desc).includes(q) || norm(e.brand).includes(q)));
   const order = Object.keys(E.EVENT_TYPES);
-  for (const e of list.slice().sort((a, b) => b.i - a.i || order.indexOf(a.type) - order.indexOf(b.type) || String(a.style).localeCompare(String(b.style)))) {
+  const sorters = {
+    type: (a, b) => b.i - a.i || order.indexOf(a.type) - order.indexOf(b.type) || String(a.style).localeCompare(String(b.style)),
+    delta: (a, b) => b.i - a.i || Math.abs(b.delta ?? 0) - Math.abs(a.delta ?? 0) || order.indexOf(a.type) - order.indexOf(b.type),
+    style: (a, b) => b.i - a.i || String(a.style).localeCompare(String(b.style)) || order.indexOf(a.type) - order.indexOf(b.type),
+  };
+  let h = `<div class="card"><div class="toolbar" style="padding:12px"><span>${fN(list.length)} cambiamenti</span>${tagC}</div><div class="list">`;
+  if (!list.length) h += `<div class="empty">Nessuna variazione con questi filtri.</div>`;
+  let lastI = null, c = 0;
+  for (const e of list.slice().sort(sorters[S.ev.sort] || sorters.type)) {
     if (c >= S.ev.limit) break;
     if (e.i !== lastI) { h += `<div class="dayhead">${esc(fSnap(S.model.snaps[e.i].meta))}</div>`; lastI = e.i; }
     h += evItem(e, true); c++;
@@ -1377,12 +1408,8 @@ document.addEventListener('click', (ev) => {
     return;
   }
   if (d.backup !== undefined) return exportBackup();
-  if (d.evt) { S.ev.types.has(d.evt) ? S.ev.types.delete(d.evt) : S.ev.types.add(d.evt); S.ev.limit = 200; return render(); }
+  if (d.evreset !== undefined) { Object.assign(S.ev, { kind: 'all', dept: '', brand: '', sort: 'type', limit: 200 }); try { localStorage.setItem('nod-evkind', 'all'); } catch (e) {} return render(); }
   if (d.artmore !== undefined && $('#artBody')) { S.art.limit += 60; $('#artBody').innerHTML = artBody(); return; }
-  if (d.evall) {
-    S.ev.types = d.evall === '1' ? new Set(Object.keys(E.EVENT_TYPES)) : d.evall === '0' ? new Set() : new Set(['qty_su', 'qty_giu', 'zero', 'scomparso', 'nuovo', 'tornato', 'promo', 'varprezzo', 'full', 'ptype', 'prezzo']);
-    return render();
-  }
   if (d.evmore !== undefined) { S.ev.limit += 200; return render(); }
   if (d.artmore !== undefined) { S.art.limit += 60; return render(); }
   if (d.togglefilters !== undefined) { S.art.showFilters = !S.art.showFilters; return render(); }
@@ -1407,6 +1434,10 @@ document.addEventListener('change', (ev) => {
   if (id === 'fileIn') return handleFiles(ev.target.files);
   if (id === 'evFrom') { S.ev.from = +v; return render(); }
   if (id === 'evTo') { S.ev.to = +v; if (S.ev.from >= S.ev.to) S.ev.from = S.ev.to - 1; return render(); }
+  if (id === 'evKind') { S.ev.kind = v; S.ev.limit = 200; try { localStorage.setItem('nod-evkind', v); } catch (e) {} return render(); }
+  if (id === 'evDept') { S.ev.dept = v; S.ev.brand = ''; S.ev.limit = 200; return render(); }
+  if (id === 'evBrand') { S.ev.brand = v; S.ev.limit = 200; return render(); }
+  if (id === 'evSort') { S.ev.sort = v; return render(); }
   if (id === 'artSort') { S.art.sort = v; return render(); }
   const selMap = { fBrand: 'brand', fDept: 'dept', fCat: 'cat', fPtype: 'ptype', fLast: 'lastOld' };
   if (selMap[id]) { S.art[selMap[id]] = v; S.art.limit = 60; return render(); }
