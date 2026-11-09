@@ -1,5 +1,5 @@
 // Copia l'app nel telefono per farla funzionare anche offline.
-const VERSION = 'stock-v9';
+const VERSION = 'stock-v10';
 const FILES = [
   './', 'index.html', 'manifest.webmanifest', 'lib/xlsx.full.min.js',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/maskable-512.png', 'icons/apple-touch-icon.png',
@@ -17,7 +17,7 @@ self.addEventListener('fetch', (e) => {
   if (url.origin !== location.origin) return;
   // la pagina: prima la rete (aggiornamenti), poi la copia locale; il resto: prima la copia locale
   if (e.request.mode === 'navigate') {
-    e.respondWith(fetch(e.request).then((r) => { const cp = r.clone(); caches.open(VERSION).then((c) => c.put('index.html', cp)); return r; }).catch(() => caches.match('index.html')));
+    e.respondWith(fetch(e.request, { cache: 'no-store' }).then((r) => { const cp = r.clone(); caches.open(VERSION).then((c) => c.put('index.html', cp)); return r; }).catch(() => caches.match('index.html')));
     return;
   }
   e.respondWith(caches.match(e.request).then((hit) => hit || fetch(e.request)));

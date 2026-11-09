@@ -600,6 +600,7 @@ const DOW = ['dom', 'lun', 'mar', 'mer', 'gio', 'ven', 'sab'];
 const fSnap = (m) => { if (!m || !m.completed) return '—'; const d = new Date(m.completed.slice(0, 10) + 'T12:00:00'); return `${DOW[d.getDay()]} ${fD(m.completed)} · ${m.completed.slice(11, 16)}`; };
 const norm = (s) => String(s || '').toUpperCase().replace(/[\s\-_./]/g, '');
 const PART = 500;
+const APP_VERSION = '10 · 09/11/26';
 
 /* ---------- impostazioni (solo comodità locale) ---------- */
 const SETTINGS_KEY = 'nod-settings';
@@ -1177,6 +1178,7 @@ function renderRep() {
   h += `</div></section>`;
   const mode = { cloud: ['on', 'Storico salvato sul tuo account: lo ritrovi da ogni dispositivo.'], local: [Store.persisted ? 'on' : 'warn', Store.persisted ? 'Storico salvato su questo telefono, protetto dalla pulizia automatica. Esporta comunque un backup ogni settimana.' : 'Storico salvato su questo telefono. Esporta un backup ogni settimana: se cancelli i dati del browser lo perdi.'], memory: ['warn', 'Archivio non disponibile: i dati si perdono chiudendo la pagina.'] }[Store.mode];
   h += `<div class="status"><span class="dot ${mode[0]}"></span>${mode[1]}</div>`;
+  h += `<div class="status" style="font-family:var(--f-mono);font-size:11.5px">Versione ${APP_VERSION}</div>`;
   const list = S.metas.filter((m) => m.source === 'xlsx').slice().reverse();
   h += `<section class="card"><header><h2>Storico</h2><span class="note" style="padding:0">${fN(list.length)} report</span></header><div class="list">`;
   if (!list.length) h += `<div class="empty">Ancora nessun report.</div>`;
